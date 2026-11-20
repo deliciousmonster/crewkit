@@ -20,7 +20,7 @@ Agents are selected at any depth, one set of call ids spans a whole report, and 
 integer nano-dollars (`nanos`), so `report` and `by_key` agree on the cents.
 
 A crew calls `report` for a window of the Lead's session (the last turn, every turn, or the cycle since a
-command such as /employ), `line` for the one line a cycle ends with, and `by_key` to total the subagents
+command such as /other), `line` for the one line a cycle ends with, and `by_key` to total the subagents
 whose label names a key, such as a Linear ticket (`Build: YTC-2976`).
 """
 import json
@@ -239,7 +239,7 @@ def report(session: Path, turn: str = "last", top: int = 5, command: str | None 
     """The Lead's turns in a window of one session and every subagent spawned in them.
 
     turn: "last" (from the last prompt typed), "all", a 1-based turn number, or "cycle": from the last
-    prompt that ran `command` (such as "/employ") to the end, across the owner's replies in between.
+    prompt that ran `command` (such as "/other") to the end, across the owner's replies in between.
     budgets: the peak context each agent type should stay under, and under "lead" what one turn may add."""
     budgets = budgets or {}
     pairs = rows_at(session)

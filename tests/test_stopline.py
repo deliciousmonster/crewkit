@@ -21,7 +21,7 @@ def later():
     return time.monotonic() + 60
 
 
-def run(s, st, skill="developer", others=(), deadline=None, last=None):
+def run(s, st, skill="example", others=(), deadline=None, last=None):
     return stopline.total(Path(s), skill, st, set(others), later() if deadline is None else deadline, last)
 
 
@@ -73,7 +73,7 @@ class Counting(Case):
             if trial == 0:
                 groups = [calls[:1], calls[1:]]  # the grouping in which a rounded float sum prints $0.41
             s = d / "s.jsonl"
-            s.write_text(uc.dump([uc.typed("/developer")] + uc.call("m0", 0, tools=[f"tu{i}" for i in range(len(groups))])))
+            s.write_text(uc.dump([uc.typed("/example")] + uc.call("m0", 0, tools=[f"tu{i}" for i in range(len(groups))])))
             sub = d / "s" / "subagents"
             sub.mkdir(parents=True)
             for i, g in enumerate(groups):
@@ -92,13 +92,13 @@ class Counting(Case):
 
     def test_u2b_a_skill_tool_call_is_not_a_start(self):
         skill = [{"type": "assistant", "message": {"id": "m1", "model": "claude-opus-5-5", "usage": {"input_tokens": 1},
-                  "content": [{"type": "tool_use", "id": "t", "name": "Skill", "input": {"skill": "developer"}}]}}]
+                  "content": [{"type": "tool_use", "id": "t", "name": "Skill", "input": {"skill": "example"}}]}}]
         self.assertIsNone(self.fresh(self.lead([uc.typed("go on")] + skill + uc.call("m2", 10))))
 
     def test_u3_a_new_start_resets_sums_seen_and_selection(self):
         s = uc.build(self.d)
         data, st = s.read_bytes(), {}
-        s.write_bytes(data[:data.index(b"/developer go")])
+        s.write_bytes(data[:data.index(b"/example go")])
         run(s, st)
         self.assertIn("Z", st["agents"])
         s.write_bytes(data)
@@ -109,14 +109,14 @@ class Counting(Case):
 
 class Agents(Case):
     def one_agent(self, meta):
-        s = self.lead([uc.typed("/developer")] + uc.call("m0", 1, tools=["t1"]))
+        s = self.lead([uc.typed("/example")] + uc.call("m0", 1, tools=["t1"]))
         sub = s.with_suffix("") / "subagents"
         sub.mkdir(parents=True)
         (sub / "agent-a.meta.json").write_text(meta)
         return s, sub
 
     def test_u4_a_growing_agent_and_a_late_meta(self):
-        s = self.lead([uc.typed("/developer")] + uc.call("m0", 1, tools=["t1", "t2"]))
+        s = self.lead([uc.typed("/example")] + uc.call("m0", 1, tools=["t1", "t2"]))
         sub = s.with_suffix("") / "subagents"
         sub.mkdir(parents=True)
         (sub / "agent-a.meta.json").write_text(json.dumps({"toolUseId": "t1"}))
@@ -167,7 +167,7 @@ class Identity(Case):
                 tmp.write_bytes(data)
                 os.replace(tmp, s)
             elif change == "shorter":
-                s.write_bytes(data[:data.index(b"/developer go")])
+                s.write_bytes(data[:data.index(b"/example go")])
             else:
                 s.write_bytes(data.replace(b'"mL3-0"', b'"mL3-9"') + uc.dump(uc.call("mX", 5)).encode())
             self.assertEqual((change, run(s, st)), (change, self.counted(s)))
@@ -193,7 +193,7 @@ class Identity(Case):
         s = self.lead([uc.typed("hello")] + uc.call("m1", 10))
         st = {}
         self.assertIsNone(run(s, st))
-        f = self.d / "x-developer.json"
+        f = self.d / "x-example.json"
         stopline.save(f, st)
         saved = json.loads(f.read_text())
         self.assertEqual(set(saved), {"v", "lead"})
@@ -210,13 +210,13 @@ class Windows(Case):
             self.assertEqual(line(run(s, st)), uc.LINE)
 
     def test_u10_a_row_longer_than_a_window_counts(self):
-        s = self.lead([uc.typed("/developer")] + uc.call("m1", 5, text="y" * (9 << 20)) + uc.call("m2", 7))
+        s = self.lead([uc.typed("/example")] + uc.call("m1", 5, text="y" * (9 << 20)) + uc.call("m2", 7))
         st = {}
         self.assertEqual(run(s, st)["tokens"], 12)
         self.assertEqual(st["lead"]["off"], s.stat().st_size)
 
     def filler(self, n, hit=False):
-        text = ("<command-name>/developer " if hit else "") + "z" * 900
+        text = ("<command-name>/example " if hit else "") + "z" * 900
         return [{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t", "content": text}]}}
                 for _ in range(n)]
 
@@ -243,13 +243,13 @@ class Windows(Case):
         per = len(uc.dump(self.filler(1)))
         self.append(s, self.filler(((8 << 20) - 40) // per))
         before = s.stat().st_size
-        self.append(s, [uc.typed("/developer " + "p" * 1200)] + uc.call("m9", 3))
+        self.append(s, [uc.typed("/example " + "p" * 1200)] + uc.call("m9", 3))
         self.assertLess(before + 20, 8 << 20)
         self.assertGreater(before + 1200, 8 << 20)  # the start row straddles the 8 MB cut
         self.assertEqual(run(s, st)["tokens"], 3)
 
     def test_u18_backward_search_parses_only_the_last_window_and_skips_false_hits(self):
-        rows = self.filler(10_000) + self.filler(1, hit=True) + self.filler(12_000) + [uc.typed("/developer go")] + uc.call("m9", 3)
+        rows = self.filler(10_000) + self.filler(1, hit=True) + self.filler(12_000) + [uc.typed("/example go")] + uc.call("m9", 3)
         s = self.lead(rows)
         self.assertGreater(s.stat().st_size, 20_000_000)
         calls, patch = self.counting()
@@ -266,34 +266,34 @@ class Windows(Case):
 
 class Others(Case):
     def test_u8_another_crews_later_start_silences_until_typed_again(self):
-        s = self.lead([uc.typed("/developer")] + uc.call("d1", 10, text="r1"))
+        s = self.lead([uc.typed("/example")] + uc.call("d1", 10, text="r1"))
         st = {}
-        self.assertIsNotNone(run(s, st, others={"employ"}))
-        self.append(s, [uc.typed("/employ")] + uc.call("e1", 20, text="r2"))
-        self.assertIsNone(run(s, st, others={"employ"}))
+        self.assertIsNotNone(run(s, st, others={"other"}))
+        self.append(s, [uc.typed("/other")] + uc.call("e1", 20, text="r2"))
+        self.assertIsNone(run(s, st, others={"other"}))
         self.append(s, [uc.typed("and then?")] + uc.call("e2", 30, text="r3"))
-        self.assertIsNone(run(s, st, others={"employ"}))
-        self.append(s, [uc.typed("/developer again")] + uc.call("d2", 40, text="r4"))
-        self.assertEqual(run(s, st, others={"employ"})["tokens"], 40)
+        self.assertIsNone(run(s, st, others={"other"}))
+        self.append(s, [uc.typed("/example again")] + uc.call("d2", 40, text="r4"))
+        self.assertEqual(run(s, st, others={"other"})["tokens"], 40)
 
     def test_u8b_the_backward_first_run_rebuilds_other_at(self):
-        s = self.lead([uc.typed("/developer")] + uc.call("d1", 10) + [uc.typed("/employ")] + uc.call("e1", 20))
+        s = self.lead([uc.typed("/example")] + uc.call("d1", 10) + [uc.typed("/other")] + uc.call("e1", 20))
         st = {}
-        self.assertIsNone(run(s, st, others={"employ"}))
-        self.append(s, [uc.typed("/developer")] + uc.call("d2", 40))
-        self.assertEqual(run(s, st, others={"employ"})["tokens"], 40)
+        self.assertIsNone(run(s, st, others={"other"}))
+        self.append(s, [uc.typed("/example")] + uc.call("d2", 40))
+        self.assertEqual(run(s, st, others={"other"})["tokens"], 40)
 
     def test_u8c_own_skill_is_dropped_and_a_tie_is_silent_for_both(self):
-        both = self.lead([uc.typed("<command-name>/developer</command-name> see <command-name>/employ")] + uc.call("x", 1), "b")
-        self.assertIsNone(run(both, {}, others={"employ"}))
-        self.assertIsNone(run(both, {}, skill="employ", others={"developer"}))
+        both = self.lead([uc.typed("<command-name>/example</command-name> see <command-name>/other")] + uc.call("x", 1), "b")
+        self.assertIsNone(run(both, {}, others={"other"}))
+        self.assertIsNone(run(both, {}, skill="other", others={"example"}))
 
     def test_u8c_the_hook_drops_its_own_skill_from_installed_skills(self):
-        s = self.lead([uc.typed("/developer")] + uc.call("d1", 10))
+        s = self.lead([uc.typed("/example")] + uc.call("d1", 10))
         home = self.d / "home"
         with mock.patch.dict(os.environ, {"HOME": str(home)}), mock.patch.object(stopline.spec, "installed_skills",
-                                                                                 lambda: {"developer", "employ"}):
-            out = stopline._run("developer", uc.event(s))
+                                                                                 lambda: {"example", "other"}):
+            out = stopline._run("example", uc.event(s))
         self.assertEqual(out, "Tokens this cycle: 0.0k · API price: $0.00")
 
 
@@ -306,15 +306,15 @@ class FinalCall(Case):
 
     def test_u9_two_text_blocks_print_and_a_missing_call_is_silent(self):
         self.home()
-        rows = [uc.typed("/developer")] + uc.call("f1", 10, 0, rows=2, tools=["x"])
+        rows = [uc.typed("/example")] + uc.call("f1", 10, 0, rows=2, tools=["x"])
         rows[1]["message"]["content"] = [{"type": "text", "text": "hello\n"}]
         rows[2]["message"]["content"] = [{"type": "text", "text": "  world"}]
         s = self.lead(rows)
-        self.assertIsNotNone(stopline._run("developer", uc.event(s, last="hello world")))
-        self.assertIsNotNone(stopline._run("developer", uc.event(s, last="hello world")))
+        self.assertIsNotNone(stopline._run("example", uc.event(s, last="hello world")))
+        self.assertIsNotNone(stopline._run("example", uc.event(s, last="hello world")))
         self.append(s, [uc.typed("more")] + uc.call("f2", 10, text="first"))
         with mock.patch.object(stopline.time, "sleep") as slept:
-            self.assertIsNone(stopline._run("developer", uc.event(s, last="the reply not yet written")))
+            self.assertIsNone(stopline._run("example", uc.event(s, last="the reply not yet written")))
         self.assertEqual(slept.call_count, 3)
 
 
@@ -323,27 +323,27 @@ class Files(Case):
         now = time.time()
         f = self.d / "st"
         f.mkdir()
-        ages = {"a-1-developer.json": 31, "a-2-developer.json": 29, "a-3-developer.json.k9x_.tmp": 2,
-                "a-4-developer.json.k9x_.tmp": 1 / 24, "notes.txt": 99}
+        ages = {"a-1-example.json": 31, "a-2-example.json": 29, "a-3-example.json.k9x_.tmp": 2,
+                "a-4-example.json.k9x_.tmp": 1 / 24, "notes.txt": 99}
         for n, days in ages.items():
             (f / n).write_text("")
             os.utime(f / n, (now - days * 86400, now - days * 86400))
         stopline.prune(f, now)
         self.assertEqual(sorted(p.name for p in f.iterdir() if p.name != ".pruned"),
-                         ["a-2-developer.json", "a-4-developer.json.k9x_.tmp", "notes.txt"])
-        (f / "a-5-developer.json").write_text("")
-        os.utime(f / "a-5-developer.json", (now - 40 * 86400,) * 2)
+                         ["a-2-example.json", "a-4-example.json.k9x_.tmp", "notes.txt"])
+        (f / "a-5-example.json").write_text("")
+        os.utime(f / "a-5-example.json", (now - 40 * 86400,) * 2)
         stopline.prune(f, now + 60)
-        self.assertTrue((f / "a-5-developer.json").exists())
+        self.assertTrue((f / "a-5-example.json").exists())
 
     def test_u14_state_path_names_and_refusals(self):
         with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.d)}):
-            self.assertEqual(stopline.state_path("abc-1", "developer"), self.d / "crewkit" / "stopline" / "abc-1-developer.json")
-            for sid, skill in (("abc", "x-employ"), ("abc", "../x"), ("../x", "developer"), ("a/b", "developer"), ("abc", "")):
+            self.assertEqual(stopline.state_path("abc-1", "example"), self.d / "crewkit" / "stopline" / "abc-1-example.json")
+            for sid, skill in (("abc", "x-other"), ("abc", "../x"), ("../x", "example"), ("a/b", "example"), ("abc", "")):
                 self.assertIsNone(stopline.state_path(sid, skill))
 
     def test_u15_two_interleaved_saves_both_land(self):
-        f = self.d / "x-developer.json"
+        f = self.d / "x-example.json"
         real = os.replace
         nested = []
 
@@ -355,7 +355,7 @@ class Files(Case):
         with mock.patch.object(stopline.os, "replace", replace):
             stopline.save(f, {"lead": {"off": 1}})
         self.assertEqual(json.loads(f.read_text())["lead"]["off"], 1)
-        self.assertEqual([p.name for p in self.d.iterdir()], ["x-developer.json"])
+        self.assertEqual([p.name for p in self.d.iterdir()], ["x-example.json"])
 
     def test_u16_the_alarm_is_cancelled_before_the_line_is_written(self):
         s = uc.build(self.d)
@@ -369,7 +369,7 @@ class Files(Case):
         with mock.patch.dict(os.environ, {"HOME": str(self.d / "home"), "XDG_CACHE_HOME": str(self.d / "c")}), \
                 mock.patch.object(sys, "stdin", io.StringIO(uc.event(s))), mock.patch.object(sys, "stdout", out), \
                 mock.patch.object(sys, "stderr", sys.stderr):
-            self.assertEqual(stopline.main(["developer"]), 0)
+            self.assertEqual(stopline.main(["example"]), 0)
         self.assertEqual(json.loads(out.getvalue())["systemMessage"], uc.LINE)
         self.assertEqual(seen[0], (0.0, 0.0))
 

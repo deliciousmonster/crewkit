@@ -4,8 +4,9 @@ crewkit is a Python library for running Claude agents under a billing gate. Its 
 `crewkit.agent_sdk.connect`, starts a Claude Agent SDK client and yields it only after the Claude
 Code CLI has reported which account it is about to bill and that account matches the backend you
 asked for: an Anthropic API key (`api`) or your own Claude sign-in (`plan`). On a mismatch it raises
-before any prompt is sent. The same package carries an optional Databricks AI Gateway route for that
-client, and the runtime the account's CrewAI crews share: model tiers, knowledge inlining, a
+before any prompt is sent. The client can also reach Claude through an optional gateway route, one
+LLM backend among several (a Databricks AI Gateway route is the one built today). The package also
+carries the runtime the account's CrewAI crews share: model tiers, knowledge inlining, a
 config-driven crew builder and the installer that links a crew's skills into Claude Code.
 
 ## Install
@@ -96,7 +97,7 @@ The rest of this page documents each module.
 | `crewkit.builder` | `build_crew(cfg, task_names, inputs)`: one agent per role and tier, the manager from `crew.yaml` holding only delegation with the run's inputs filled in, a task whose context is not in the run reading the earlier outputs, tools from `tools.yaml`, each class once per agent |
 | `crewkit.cli` | `main(cfg)`: `[--dry-run] <inputs in crew.yaml order> <task> ...` |
 | `crewkit.workspace` | A crew's workspace, `<workdir>/agents/<crew>/`: `init` copies the crew's `templates/workspace/` without overwriting (filling `{{vcs}}`), `vcs_of` tells git, a synced drive or none, `policy` reads `workspace.yaml`'s `vcs` block, `find_records` lists older agent records under a folder |
-| `crewkit.commands` | `dispatch(commands, argv, prog)`: one console script per crew, each tool a subcommand run as its module's `__main__`, so an agent writes `employmentcrew scouts run ...` literally every call |
+| `crewkit.commands` | `dispatch(commands, argv, prog)`: one console script per crew, each tool a subcommand run as its module's `__main__`, so an agent writes `examplecrew reports run ...` literally every call |
 | `crewkit.lint` | `aliases(text)` and `check_skills(root)`: the skill lines that name a command alias, keep a multi-word command in a variable, or run a variable as a command (zsh does not word-split one), for a crew's tests; `flow_tools(text)`, `check_flow_tools(tools, flows, roles)` and `flows_of(crew, path, root)`: each tool a role's flows declare on a `**Tools:**` line that the role does not hold (see "Flow tool declarations") |
 | `crewkit.install` | `crewkit install | uninstall | doctor | update | lint`: link a crew's skills from its clone into Claude Code, driven by the crew's `[tool.crewkit]` table, and check its flows' declared tools |
 | `crewkit.spec` | `load_spec(root)` reads the `[tool.crewkit]` table into a `Spec`; `find_root`, `resolve_crew_path` and `doctor` find the clone and check the box |
@@ -214,10 +215,10 @@ A user with access to the crew's repo clones it anywhere, tells their Claude Cod
 
 ```toml
 [tool.crewkit]
-skills = ["employ"]            # required: folders under skills_dir, each holding a SKILL.md
-name = "employmentcrew"        # default: [project] name; names ~/.config/<name>/ and <NAME>_HOME
+skills = ["example"]           # required: folders under skills_dir, each holding a SKILL.md
+name = "examplecrew"           # default: [project] name; names ~/.config/<name>/ and <NAME>_HOME
 skills_dir = "skills"          # default
-repo = "owner/employmentcrew"  # named in install errors, so a missing GitHub access is clear
+repo = "owner/examplecrew"     # named in install errors, so a missing GitHub access is clear
 agents_dir = "agents-claude"   # optional: *.md copied to .claude/agents/, {crew_path} substituted
 hook = "uv run --project {crew_path} python -m crew status"  # optional SessionStart command; in a hook,
                                  # {crew_path} goes in shell-quoted, so the template leaves it unquoted
@@ -300,11 +301,11 @@ fails with it, and `crewkit lint` (or `<crew> lint`, through `crewkit.install.ma
 
 ```python
 from crewkit import lint
-problems = lint.check_flow_tools(tools, lint.flows_of(crew, "skills/employ/flows/{flow}.md", ROOT), list(crew["roles"]))
+problems = lint.check_flow_tools(tools, lint.flows_of(crew, "skills/example/flows/{flow}.md", ROOT), list(crew["roles"]))
 ```
 
-This came from 2026-10-29, when the employment crew's tailor followed its flow's instruction to search the web
-and the guard denied WebSearch, which its role does not hold.
+This came from a crew whose writer role followed its flow's instruction to search the web, and the
+guard denied WebSearch, which the role does not hold.
 
 ## Agent labels
 
@@ -338,7 +339,7 @@ Tests: `uv run python -m unittest discover -s tests` runs the core and skips the
 once (Claude Code writes one row per content block, each with the whole call's usage), its context, its
 tokens and its price at API list rates by model (`PRICES`: input, 5-minute and 1-hour cache writes,
 cache reads, output; fast mode doubled). `report(session, turn, command=, budgets=)` covers the last
-turn, every turn, or the cycle since a command such as `/employ`; `line(rep)` is the cycle's closing
+turn, every turn, or the cycle since a command such as `/example`; `line(rep)` is the cycle's closing
 line, `Tokens this cycle: 54.1k · API price: $0.02`; `by_key([rep, ...])` totals the subagents whose
 label names a key, a Linear ticket by default (`Build: YTC-2976`). The price is what the calls would
 cost on the API, not what a Claude plan bills.

@@ -1,4 +1,4 @@
-# One console script per crew, with each tool a subcommand: `employmentcrew scouts run ...`. Agents then run a
+# One console script per crew, with each tool a subcommand: `examplecrew reports run ...`. Agents then run a
 # literal command every call instead of keeping it in a shell variable, which zsh does not word-split.
 import runpy
 import sys

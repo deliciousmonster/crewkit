@@ -103,7 +103,7 @@ class Migrate(Base):
         put(self.repo, "agents/old/evidence-2026-10-01/run.log", "ok\n")
         put(self.repo, "agents/old/soak-2026-10-02.log", "soak\n")
         put(self.repo, "agents/old/knowledge/OldFact.md", '---\nname: OldFact\ndescription: "a fact"\nmetadata:\n  node_type: memory\n  modified: 2026-09-01\n---\nbody\n')
-        put(self.repo, ".claude/settings.local.json", '{"hook": "~/Developer/crews/oldcrew/state agents/old"}\n')
+        put(self.repo, ".claude/settings.local.json", '{"hook": "~/src/crews/oldcrew/state agents/old"}\n')
         git(self.repo, "add", ".")
         git(self.repo, "commit", "-qm", "init")
 

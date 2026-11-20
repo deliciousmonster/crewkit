@@ -68,7 +68,7 @@ class Report(unittest.TestCase):
     def setUp(self):
         self.d = Path(tempfile.mkdtemp())
         self.s = self.d / "sess.jsonl"
-        rows = [typed("hello")] + call("l0", inp=5) + [typed("<command-name>/employ</command-name>")] \
+        rows = [typed("hello")] + call("l0", inp=5) + [typed("<command-name>/other</command-name>")] \
             + call("l1", inp=1000, out=100, tool="tu1", blocks=2) + call("l2", inp=2000, out=50)
         self.s.write_text("\n".join(json.dumps(r) for r in rows))
         sub = self.d / "sess" / "subagents"
@@ -77,7 +77,7 @@ class Report(unittest.TestCase):
         (sub / "agent-a1.jsonl").write_text("\n".join(json.dumps(r) for r in call("s1", model="claude-haiku-5-5", inp=50_000, out=1000, blocks=2)))
 
     def test_cycle_from_the_command_with_its_agents(self):
-        rep = usage.report(self.s, "cycle", command="/employ", budgets={"lead": 10, "dev-engineer": 1})
+        rep = usage.report(self.s, "cycle", command="/other", budgets={"lead": 10, "dev-engineer": 1})
         t = rep["total"]
         self.assertEqual(t["lead"], 3150)
         self.assertEqual(t["agents"], 51_000)
@@ -105,7 +105,7 @@ class Nested(Scratch):
     def setUp(self):
         super().setUp()
         self.s = uc.build(self.d)
-        self.rep = usage.report(self.s, "cycle", command="/developer")
+        self.rep = usage.report(self.s, "cycle", command="/example")
 
     def agent(self, desc):
         return next(a for a in self.rep["turns"][0]["agents"] if a["agent"] == desc)
@@ -138,7 +138,7 @@ class Missing(Scratch):
         sub = s.with_suffix("") / "subagents"
         (sub / "agent-N1.meta.json").write_text("")
         (sub / "agent-B.jsonl").unlink()
-        rep = usage.report(s, "cycle", command="/developer")
+        rep = usage.report(s, "cycle", command="/example")
         names = [a["agent"] for a in rep["turns"][0]["agents"]]
         self.assertNotIn("n1", names)
         self.assertIn("Build: ABC-1 child", names)
@@ -150,14 +150,14 @@ class IdLess(Scratch):
     def test_r2b_thirty_agents_of_idless_calls_all_count(self):
         s = self.d / "s.jsonl"
         tools = [f"tu{i}" for i in range(30)]
-        s.write_text(uc.dump([uc.typed("/developer")] + uc.call("m0", 1, tools=tools)))
+        s.write_text(uc.dump([uc.typed("/example")] + uc.call("m0", 1, tools=tools)))
         sub = s.with_suffix("") / "subagents"
         sub.mkdir(parents=True)
         row = {"type": "assistant", "message": {"model": "claude-opus-5-5", "usage": {"input_tokens": 7}, "content": []}}
         for i, t in enumerate(tools):
             (sub / f"agent-x{i}.meta.json").write_text(json.dumps({"toolUseId": t, "description": f"a{i}"}))
             (sub / f"agent-x{i}.jsonl").write_text(uc.dump([row] * 5))
-        rep = usage.report(s, "cycle", command="/developer")
+        rep = usage.report(s, "cycle", command="/example")
         self.assertEqual(sum(a["calls"] for a in rep["turns"][0]["agents"]), 150)
         self.assertEqual(rep["total"]["agents"], 1050)
 
@@ -212,14 +212,14 @@ class Contract(Scratch):
     def test_r6_by_key_agrees_with_the_cycle_line(self):
         s = self.d / "p.jsonl"
         calls = [uc.priced_call(i, c) for i, c in enumerate(uc.PRICED)]
-        s.write_text(uc.dump([uc.typed("/developer")] + uc.call("m0", 0, tools=["tu0", "tu1"]) ))
+        s.write_text(uc.dump([uc.typed("/example")] + uc.call("m0", 0, tools=["tu0", "tu1"]) ))
         sub = s.with_suffix("") / "subagents"
         sub.mkdir(parents=True)
         # One call, then nine: the grouping in which 0.14.1's rounded float sum prints $0.41.
         for i, part in enumerate([calls[:1], calls[1:]]):
             (sub / f"agent-k{i}.meta.json").write_text(json.dumps({"toolUseId": f"tu{i}", "description": f"Build: ABC-1 {i}"}))
             (sub / f"agent-k{i}.jsonl").write_text(uc.dump(part))
-        rep = usage.report(s, "cycle", command="/developer")
+        rep = usage.report(s, "cycle", command="/example")
         row = usage.by_key([rep])["ABC-1"]
         self.assertEqual(row["nanos"], uc.PRICED_NANOS)
         self.assertEqual(row["nanos"], rep["total"]["nanos"])

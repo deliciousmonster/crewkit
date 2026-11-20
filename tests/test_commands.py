@@ -39,14 +39,14 @@ class Dispatch(unittest.TestCase):
 
 class Lint(unittest.TestCase):
     def test_aliases_and_variables_run_as_commands_are_found(self):
-        bad = ["`scouts` below is `uv run --project <crew> python -m x`.",
-               'S="uv run --project /c python -m scouts"',
+        bad = ["`reports` below is `uv run --project <crew> python -m x`.",
+               'S="uv run --project /c python -m reports"',
                "$S run --ws /w", 'cd /x && "$TOOL" check']
         for line in bad:
             self.assertTrue(lint.aliases(line), line)
 
     def test_literal_commands_and_variables_as_arguments_pass(self):
-        good = ["uv run --project <crew> employmentcrew scouts run --ws <ws>",
+        good = ["uv run --project <crew> examplecrew reports run --ws <ws>",
                 'for c in "$A" "$(cat f)"; do echo "$c"; done', 'SKILL_DIR="/a/b"', "echo $HOME/x"]
         for line in good:
             self.assertEqual(lint.aliases(line), [], line)

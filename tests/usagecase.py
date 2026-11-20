@@ -39,7 +39,7 @@ def dump(rows) -> str:
     return "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
 
 
-def lead_rows(skill="developer"):
+def lead_rows(skill="example"):
     return ([typed("hello")] + call("mP0", 1)
             + [typed(f"<command-name>/{skill}</command-name>")] + call("m1a", 1000, tools=["tuZ"])
             + [typed(f"/{skill} go")]
@@ -76,7 +76,7 @@ def write_agents(session: Path, which=None) -> Path:
     return sub
 
 
-def build(d: Path, name="sess", skill="developer") -> Path:
+def build(d: Path, name="sess", skill="example") -> Path:
     """Write U1's session under `d` and return the transcript's path."""
     s = Path(d) / f"{name}.jsonl"
     s.write_text(dump(lead_rows(skill)), encoding="utf-8")

@@ -89,6 +89,6 @@ def check_flow_tools(tools: dict, flows: dict, roles: list | None = None) -> lis
 
 def flows_of(crew: dict, path: str, root=".") -> dict:
     """{role: [flow file, ...]} from crew.yaml's `roles.<role>.claude_code.flows`, each name placed into `path`
-    (`skills/employ/flows/{flow}.md`) under root."""
+    (`skills/other/flows/{flow}.md`) under root."""
     cc = {role: (spec or {}).get("claude_code") or {} for role, spec in (crew.get("roles") or {}).items()}
     return {role: [Path(root) / path.format(flow=f) for f in c["flows"]] for role, c in cc.items() if c.get("flows")}

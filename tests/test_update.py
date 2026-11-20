@@ -292,35 +292,35 @@ class Refused(unittest.TestCase):
 
     def test_every_hint_names_the_command_the_owner_types(self):
         self.keep([])
-        msg, _ = self.refuses("`developer update --force`", command="developer")
+        msg, _ = self.refuses("`example update --force`", command="example")
         self.assertNotIn("somecrew update", msg)
         self.cache.unlink()
         self.keep({**self.key, "lines": ["update: up to date"]})
         again = update.check(self.d, "somecrew", cache=self.cache, today=self.today, git=fake_git(),
-                             command="developer")
-        self.assertIn("`developer update --force` asks again", again[-1])
-        lines = update.check(self.d, "somecrew", git=fake_git(remote_head="b" * 40), command="developer")
-        self.assertIn("then `developer install`", lines[1])
-        self.assertIn("run the tests, `developer install`", lines[2])
+                             command="example")
+        self.assertIn("`example update --force` asks again", again[-1])
+        lines = update.check(self.d, "somecrew", git=fake_git(remote_head="b" * 40), command="example")
+        self.assertIn("then `example install`", lines[1])
+        self.assertIn("run the tests, `example install`", lines[2])
         unfetched = update.check(self.d, "somecrew", git=fake_git(remote_head="b" * 40, known=False),
-                                 command="developer")
-        self.assertIn("then `developer update --force` tells which", unfetched[1])
+                                 command="example")
+        self.assertIn("then `example update --force` tells which", unfetched[1])
         self.assertNotIn("somecrew install", "\n".join(lines))
         self.assertNotIn("somecrew update", "\n".join(unfetched))
 
     def test_the_command_line_names_the_crews_launcher_or_crewkit_in_its_clone(self):
         home = self.d / "home"
-        kept = home / ".config/developercrew/update-check.json"
+        kept = home / ".config/examplecrew/update-check.json"
         kept.parent.mkdir(parents=True)
-        base = '[project]\nname = "developercrew"\n[tool.crewkit]\nskills = ["s"]\n'
-        for extra, hint in (('bin = ["developer"]\n', "`developer update --force`"),
+        base = '[project]\nname = "examplecrew"\n[tool.crewkit]\nskills = ["s"]\n'
+        for extra, hint in (('bin = ["example"]\n', "`example update --force`"),
                             ("", f"`uv run --directory {self.d.resolve()} crewkit update --force`")):
             with self.subTest(hint):
                 kept.write_text("[]")
                 (self.d / "pyproject.toml").write_text(base + extra)
                 out = self.cli_update(home)
                 self.assertIn(hint, out)
-                self.assertNotIn("developercrew update", out)
+                self.assertNotIn("examplecrew update", out)
 
     def test_a_clone_path_with_braces_or_a_space_gives_the_line_and_a_hint_a_shell_reads_back(self):
         home = self.d / "home"

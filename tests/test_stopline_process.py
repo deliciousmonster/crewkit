@@ -23,7 +23,7 @@ def audit(event, args):
         seen.append(str(args[0]))
 sys.addaudithook(audit)
 from crewkit import stopline
-stopline.main(["developer"])
+stopline.main(["example"])
 sys.stdout.write("\\nAUDIT " + __import__("json").dumps(seen))
 """
 
@@ -39,7 +39,7 @@ class Proc(unittest.TestCase):
         self.crew = self.d / "crew"
         uc.wrapper(self.crew, sys.executable)
 
-    def hook(self, stdin, skill="developer", cwd=None, command=None, timeout=10):
+    def hook(self, stdin, skill="example", cwd=None, command=None, timeout=10):
         cmd = command or stopline.COMMAND.format(crew_path=self.crew, skill=skill)
         return subprocess.run(["sh", "-c", cmd], input=stdin, capture_output=True, text=True, env=self.env,
                               cwd=cwd or self.d, timeout=timeout, check=False)
@@ -57,13 +57,13 @@ class Proc(unittest.TestCase):
 class Silence(Proc):
     def test_p1_p7_bad_input_is_silent_with_exit_zero(self):
         for stdin in ("garbage", "{}", uc.event(self.d / "missing.jsonl"), json.dumps({"hook_event_name": "Stop"})):
-            r = subprocess.run([sys.executable, "-I", "-m", "crewkit.stopline", "developer"], input=stdin,
+            r = subprocess.run([sys.executable, "-I", "-m", "crewkit.stopline", "example"], input=stdin,
                                capture_output=True, text=True, env=self.env, timeout=10, check=False)
             self.assert_silent(r)
 
     def test_p4_stdin_that_never_closes_ends_inside_the_alarm(self):
         t = time.monotonic()
-        p = subprocess.Popen([sys.executable, "-I", "-m", "crewkit.stopline", "developer"], stdin=subprocess.PIPE,
+        p = subprocess.Popen([sys.executable, "-I", "-m", "crewkit.stopline", "example"], stdin=subprocess.PIPE,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.env)
         try:
             code = p.wait(timeout=10)
@@ -130,20 +130,20 @@ class Line(Proc):
         self.assertEqual((stat.S_IMODE(f.stat().st_mode), stat.S_IMODE(f.parent.stat().st_mode)), (0o600, 0o700))
         self.env["XDG_CACHE_HOME"] = str(self.d / "xdg")
         self.hook(uc.event(s))
-        self.assertTrue((self.d / "xdg" / "crewkit" / "stopline" / "sess-1-developer.json").is_file())
+        self.assertTrue((self.d / "xdg" / "crewkit" / "stopline" / "sess-1-example.json").is_file())
 
     def test_p8_others_come_from_every_manifest_less_the_own_skill(self):
         cfg = self.home / ".config"
-        mans = {"c1": {"links": [{"path": str(self.home / ".claude/skills/employ"), "target": "x"}]},
+        mans = {"c1": {"links": [{"path": str(self.home / ".claude/skills/other"), "target": "x"}]},
                 "c2": {"links": [{"path": str(self.d / "proj/.claude/skills/scout"), "target": "x"}]},
-                "c3": {"links": [{"path": str(self.home / ".claude/skills/developer"), "target": "x"}]}}
+                "c3": {"links": [{"path": str(self.home / ".claude/skills/example"), "target": "x"}]}}
         for crew, man in mans.items():
             (cfg / crew).mkdir(parents=True)
             (cfg / crew / "install.json").write_text(json.dumps(man))
         (cfg / "c4").mkdir()
         (cfg / "c4" / "install.json").write_text("{not json")
         with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
-            self.assertEqual(spec.installed_skills(), {"employ", "scout", "developer"})
+            self.assertEqual(spec.installed_skills(), {"other", "scout", "example"})
             said = []
             install._read_others("c0", said)
             self.assertEqual(said, [f"ignored {cfg / 'c4' / 'install.json'}: it is not a JSON object"])
