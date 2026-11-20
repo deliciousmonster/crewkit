@@ -1,0 +1,81 @@
+[project]
+name = "crewkit"
+version = "0.16.2"
+description = "A billing-gated entry to the Claude Agent SDK, an optional Databricks AI Gateway route, and the runtime CrewAI crews share."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "deliciousmonster" }]
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/deliciousmonster/crewkit"
+Repository = "https://github.com/deliciousmonster/crewkit"
+Issues = "https://github.com/deliciousmonster/crewkit/issues"
+Changelog = "https://github.com/deliciousmonster/crewkit/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+# The headless CrewAI path. The core (workspace, migrate, install) needs only pyyaml.
+run = [
+    "crewai[anthropic]==1.15.28; python_version < '3.14'",
+    "crewai-tools==1.15.28; python_version < '3.14'",
+]
+# crewkit.agent_sdk; the pin bundles Claude Code 2.1.326, whose account shapes tests/fixtures records.
+agent-sdk = ["claude-agent-sdk==0.2.183", "anyio>=4.5"]
+# crewkit.databricks_gateway, the CREW_LLM_ROUTE=databricks-gateway preflight.
+databricks = ["databricks-sdk==0.167.0", "anyio>=4.5"]
+
+[project.scripts]
+crewkit = "crewkit.install:main"
+
+[dependency-groups]
+dev = ["ruff>=0.15", "mypy>=1.18", "types-PyYAML"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/uv.lock", "/scripts"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# a test imports an optional extra in a try before importing crewkit
+"tests/*" = ["E402"]
+
+[tool.mypy]
+files = ["src/crewkit"]
+python_version = "3.11"
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["crewai", "crewai.*", "crewai_tools", "crewai_tools.*", "litellm", "litellm.*"]
+ignore_missing_imports = true
+
+# Modules with errors from before mypy ran in CI; each comes off this list once it checks clean.
+[[tool.mypy.overrides]]
+module = [
+    "crewkit.builder", "crewkit.install", "crewkit.lint", "crewkit.migrate", "crewkit.plan_llm",
+    "crewkit.spec", "crewkit.stopline", "crewkit.update", "crewkit.usage",
+]
+ignore_errors = true

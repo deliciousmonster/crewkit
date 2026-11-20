@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Lock agrees with pyproject.toml
+        run: uv lock --check
+      - name: Install
+        run: uv sync --locked --python ${{ matrix.python }} --extra agent-sdk --extra databricks --group dev
+      - name: Ruff
+        run: uv run --locked ruff check .
+      - name: Mypy
+        run: uv run --locked mypy
+      - name: Tests
+        # CREWKIT_LIVE stays unset: the live tests need a signed-in Claude Code
+        run: uv run --locked python -m unittest discover -s tests
+
+  crewai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install with the run extra
+        run: uv sync --locked --python 3.13 --extra run --extra agent-sdk --extra databricks
+      - name: Tests
+        run: uv run --locked python -m unittest discover -s tests

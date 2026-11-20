@@ -1,0 +1,10 @@
+{
+  "account": {
+    "apiKeySource": "ANTHROPIC_API_KEY",
+    "apiProvider": "firstParty",
+    "tokenSource": "claude.ai"
+  },
+  "auth_conflict_present": true,
+  "claude_code_version": "2.1.326",
+  "route": "api-key"
+}

@@ -1,0 +1,8 @@
+{
+  "account": {
+    "apiProvider": "vertex"
+  },
+  "auth_conflict_present": false,
+  "claude_code_version": "2.1.326",
+  "route": "vertex"
+}
