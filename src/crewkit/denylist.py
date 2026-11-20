@@ -4,7 +4,11 @@ a structural check that needs no list (home-directory paths and real-looking ema
 The list is `$CREWKIT_PRIVATE_TERMS` or `~/.config/crewkit/private-terms`: one case-insensitive regex per line, `#`
 comments and blank lines ignored. A hit prints as `path:line` with the term's line number in the list, never the
 term, so a failing log does not leak what it protects; a file whose name holds a term prints as `file #N`, its
-index in `git ls-files`. A crew's test is three lines:
+index in `git ls-files`.
+
+The structural check skips what `.crewkit-allow` at the repository root allows: one case-insensitive regex per
+line, searched in each address or path found, for the public addresses a repository's own mechanism names. It never
+applies to the private terms. A `noreply` or `no-reply` address needs no entry. A crew's test is three lines:
 
     class PrivateTerms(unittest.TestCase):
         def test_clean(self):
@@ -23,9 +27,11 @@ from pathlib import Path
 
 ENV = "CREWKIT_PRIVATE_TERMS"
 EXCLUDED = {"uv.lock"}
+ALLOW = ".crewkit-allow"
 HOME = re.compile(r"/(?:Users|home)/([A-Za-z0-9._-]+)/")
 HOME_OK = {"user", "username", "you", "me", "runner", "example", "name", "someone"}
-EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b")
+EMAIL = re.compile(r"([A-Za-z0-9._%+-]+)@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b")
+NOREPLY = re.compile(r"no-?reply", re.I)
 EMAIL_OK = re.compile(r"(^|\.)(example\.(com|org|net)|users\.noreply\.github\.com)$|^github\.com$", re.I)
 
 
@@ -43,8 +49,15 @@ def terms_path() -> Path:
     return Path(os.environ.get(ENV) or Path.home() / ".config/crewkit/private-terms").expanduser()
 
 
+@dataclass
+class Report:
+    hits: list[Hit]
+    skipped: str | None  # why the term scan did not run
+    notes: list[str]  # allow-file lines that allowed nothing
+
+
 def load(path: Path) -> list[tuple[int, re.Pattern[str]]]:
-    """The list's patterns with their line numbers; a bad one raises ValueError naming only its line."""
+    """A list's patterns with their line numbers; a bad one raises ValueError naming only its line."""
     out = []
     for n, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         term = raw.strip()
@@ -94,24 +107,45 @@ def scan(root: Path, terms: Terms) -> list[Hit]:
     return named + [Hit(label, n, f"term {t}") for label, n, text in _lines(Path(root), files) for t, rx in terms if rx.search(text)]
 
 
-def structural(root: Path, terms: Terms | None = None) -> list[Hit]:
-    """Home-directory paths and email addresses outside the example and noreply domains; needs no list."""
+def structural(root: Path, terms: Terms | None = None, allow: Terms | None = None,
+               used: set[int] | None = None) -> list[Hit]:
+    """Home-directory paths and email addresses outside the example, noreply and allowed ones; needs no list.
+    Each allow line that let something through is added to `used`."""
+    used = set() if used is None else used
+
+    def allowed(found: str) -> bool:
+        lines = {n for n, rx in allow or [] if rx.search(found)}
+        used.update(lines)
+        return bool(lines)
+
     hits = []
-    for label, n, text in _lines(Path(root), _files(Path(root), terms or [])):
-        if any(m.group(1).lower() not in HOME_OK for m in HOME.finditer(text)):
+    files = [f for f in _files(Path(root), terms or []) if f[0] != ALLOW]  # its own entries would mark it used
+    for label, n, text in _lines(Path(root), files):
+        # lists, not generators, so every allow line that matches is marked used
+        if any([m.group(1).lower() not in HOME_OK and not allowed(m.group(0)) for m in HOME.finditer(text)]):
             hits.append(Hit(label, n, "home path"))
-        if any(not EMAIL_OK.search(m.group(1)) for m in EMAIL.finditer(text)):
+        if any([not (EMAIL_OK.search(m.group(2)) or NOREPLY.fullmatch(m.group(1)) or allowed(m.group(0)))
+                for m in EMAIL.finditer(text)]):
             hits.append(Hit(label, n, "email"))
     return hits
 
 
+def report(root: Path) -> Report:
+    """Every hit, why the term scan was skipped (no list) or None, and the allow lines that matched nothing."""
+    root, path = Path(root), terms_path()
+    allow = load(root / ALLOW) if (root / ALLOW).is_file() else []
+    used: set[int] = set()
+    terms = load(path) if path.is_file() else None
+    hits = structural(root, terms, allow, used) + (scan(root, terms) if terms is not None else [])
+    notes = [f"{ALLOW} line {n} allowed nothing" for n, _ in allow if n not in used]
+    skipped = None if terms is not None else f"no private-terms list at {path} (set ${ENV}); the term scan is skipped"
+    return Report(hits, skipped, notes)
+
+
 def check(root: Path) -> tuple[list[Hit], str | None]:
     """Every hit, and why the term scan was skipped (no list), or None when it ran."""
-    root, path = Path(root), terms_path()
-    if not path.is_file():
-        return structural(root), f"no private-terms list at {path} (set ${ENV}); the term scan is skipped"
-    terms = load(path)
-    return structural(root, terms) + scan(root, terms), None
+    r = report(root)
+    return r.hits, r.skipped
 
 
 def assert_clean(test: unittest.TestCase, root: Path) -> None:
@@ -131,14 +165,16 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as e:
         return 0 if e.code == 0 else 2
     try:
-        hits, skipped = check(a.dir)
+        r = report(a.dir)
     except (ValueError, subprocess.CalledProcessError, OSError) as e:
         print(f"denylist: {e}", file=sys.stderr)
         return 2
-    if skipped:
-        print(f"denylist: {skipped}")
-    print("\n".join(map(str, hits)) or "denylist: no hits")
-    return 1 if hits else 0
+    if r.skipped:
+        print(f"denylist: {r.skipped}")
+    for note in r.notes:
+        print(f"denylist: note: {note}")
+    print("\n".join(map(str, r.hits)) or "denylist: no hits")
+    return 1 if r.hits else 0
 
 
 if __name__ == "__main__":

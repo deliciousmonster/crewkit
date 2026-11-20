@@ -169,7 +169,10 @@ scan is skipped and the reason printed.
 
 A structural check runs with or without a list: a `/Users/<name>/` or `/home/<name>/` path, or an
 email address outside `example.com`, `example.org`, `example.net` and `users.noreply.github.com`,
-is a hit. Exit codes are 0 clean, 1 hits, 2 an unreadable list or a bad regex.
+is a hit, as is any other address apart from a `noreply` or `no-reply` one. A repository allows the
+public addresses and paths its own mechanism names in `.crewkit-allow` at its root, one regex per line
+searched in each address or path found; it never allows a private term, and an entry that allows
+nothing prints as a note. Exit codes are 0 clean, 1 hits, 2 an unreadable list or a bad regex.
 
 A crew's test is three lines:
 

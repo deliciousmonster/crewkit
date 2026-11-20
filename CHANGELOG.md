@@ -4,6 +4,22 @@ Each release is an annotated git tag, `vX.Y.Z`; a consumer pins it in `[tool.uv.
 "Consumers" line says what moving a pin to that release changes. Entries before 0.16.0 are
 summarised from the tag messages and release commits.
 
+## 0.17.1 (2026-11-20)
+
+A patch release: the denylist's structural check learns what a repository may name in public.
+
+- `.crewkit-allow` at a repository's root: one case-insensitive regex per line, `#` comments,
+  searched in each email address and home-directory path the structural check finds, so the public
+  sender addresses a mail filter names pass. It never applies to the private terms, and the file is
+  scanned for them like any other. An entry that allows nothing prints as
+  `denylist: note: .crewkit-allow line N allowed nothing` and does not fail the run; a bad regex
+  exits 2.
+- A `noreply` or `no-reply` address passes with no entry.
+- `denylist.report(root)` returns the hits, the skip reason and the notes; `check` is unchanged.
+
+Consumers: a pin and lock change. A repository whose check flagged public vendor addresses can
+commit a `.crewkit-allow` for them; nothing else moves.
+
 ## 0.17.0 (2026-11-20)
 
 A minor release: the public API grows and no name changes.

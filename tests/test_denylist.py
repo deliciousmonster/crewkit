@@ -130,3 +130,39 @@ class FileNames(Synthetic):
         self.list.write_text("zzz|\n")
         self.add("a.md", "x\n")
         self.assertEqual(self.cli()[0], 2)
+
+
+class AllowFile(Synthetic):
+    """Failed on 500dbd6, which had no allow file and no noreply default."""
+
+    def test_an_allowed_address_or_path_passes_and_others_on_its_line_do_not(self):
+        sender = "alerts" + "@" + "jobs.acme-board.io"
+        self.add(".crewkit-allow", "# vendor senders the filters match\nalerts@jobs\\.acme-board\\.io\n/" + "home/ci-bot/\n")
+        self.add("filters.md", f"from {sender}\nfrom {sender} or {EMAIL}\nlogs in /" + "home/ci-bot/run\n")
+        found = [str(h) for h in denylist.structural(self.repo, allow=denylist.load(self.repo / ".crewkit-allow"))]
+        self.assertEqual(found, ["filters.md:2: email"])
+
+    def test_noreply_senders_need_no_entry(self):
+        self.add("a.md", "no-reply" + "@" + "mail.acme-board.io and NoReply" + "@" + "acme-ats.io\n")
+        self.add("b.md", "reply" + "@" + "acme-ats.io and noreplyx" + "@" + "acme-ats.io\n")
+        self.assertEqual([str(h) for h in denylist.structural(self.repo)], ["b.md:1: email"])
+
+    def test_the_allow_file_never_allows_a_private_term(self):
+        self.add(".crewkit-allow", "globex\n")
+        self.add("a.md", "Globex\n")
+        code, out = self.cli()
+        self.assertEqual(code, 1)
+        self.assertIn("a.md:1: term 3", out)
+        self.assertIn(".crewkit-allow:1: term 3", out)
+
+    def test_an_entry_that_allows_nothing_is_a_note(self):
+        self.add(".crewkit-allow", "# senders\nalerts@jobs\\.acme-board\\.io\nold@gone\\.example\\.io\n")
+        self.add("a.md", "alerts" + "@" + "jobs.acme-board.io\n")
+        self.assertEqual(self.cli(), (0, "denylist: note: .crewkit-allow line 3 allowed nothing\ndenylist: no hits\n"))
+
+    def test_a_bad_allow_line_is_usage(self):
+        self.add(".crewkit-allow", "ok\n(unclosed\n")
+        code, out = self.cli()
+        self.assertEqual(code, 2)
+        self.assertIn("line 2", out)
+
