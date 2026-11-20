@@ -42,8 +42,9 @@ def skeleton(template: Path, vcs: str) -> dict[str, str]:
     return {str(f.relative_to(template)): f.read_text().replace("{{vcs}}", vcs) for f in sorted(template.rglob("*")) if f.is_file()}
 
 
-def init(workdir: Path, ws: Path, template: Path) -> list[str]:
-    """Copy the template into `ws`, never overwriting; returns the files written."""
+def init(workdir: Path, ws: Path, template: Path, *, sdlc: bool = False) -> list[str]:
+    """Copy the template into `ws`, never overwriting; with `sdlc`, then the SDLC deliverables the crew's template
+    lacks. Returns the files written."""
     written = []
     for rel, text in skeleton(template, vcs_of(workdir)).items():
         dst = ws / rel
@@ -51,6 +52,9 @@ def init(workdir: Path, ws: Path, template: Path) -> list[str]:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(text)
             written.append(rel)
+    if sdlc:
+        from crewkit.sdlc import scaffold
+        written += scaffold(ws)
     return written
 
 

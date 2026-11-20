@@ -1,5 +1,6 @@
 # Gather a folder's agent files into its workspace: relocate (or, inside it, lift) a legacy folder, aggregate records
 # kept elsewhere, add what the template lacks, organize dated evidence, format knowledge, rewrite old paths. Commits nothing.
+import fnmatch
 import json
 import os
 import re
@@ -26,6 +27,8 @@ class Layout:
     history: list[str] = field(default_factory=list)  # a lift: ws paths whose text keeps the old paths (journal, evidence)
     archive: str = "archive"  # a lift: where root files the layout has no place for, and path-moves.md, go
     marker: str | None = None  # a file in ws that only this layout has; with no legacy record left, migrate stops
+    sdlc: bool = False  # scaffold the SDLC deliverables ws lacks; never moves content into them
+    sdlc_sources: dict[str, str] = field(default_factory=dict)  # a glob under ws -> the deliverable it is a draft source for
 
 
 def kebab(text: str) -> str:
@@ -252,7 +255,31 @@ def _lift(folder: Path, ws: Path, legacy: Path, layout: Layout) -> dict:
             "review": list(collisions), "collisions": collisions}
 
 
+def _sdlc(planned: dict, layout: Layout) -> dict:
+    """Add a scaffold step for each missing SDLC deliverable, and a review line for each draft source found."""
+    from crewkit.sdlc import DELIVERABLES, md_files, template_text
+
+    ws, legacy = planned["ws"], planned.get("legacy") or (planned["folder"] / layout.legacy if layout.legacy else None)
+    missing = [rel for rel in DELIVERABLES if not os.path.lexists(ws / rel) and not (legacy and os.path.lexists(legacy / rel))]
+    if not missing:
+        return planned
+    planned["steps"] = [*planned["steps"], *({"kind": "scaffold", "to": ws / rel, "text": template_text(rel)} for rel in missing)]
+    planned["review"] = [r for r in planned["review"] if "nothing to do" not in r]
+    found = list(md_files(ws)) if layout.sdlc_sources else []
+    for pattern, into in layout.sdlc_sources.items():
+        for f in found:
+            rel = str(f.relative_to(ws))
+            if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(rel, pattern.removeprefix("**/")):
+                planned["review"].append(f"{rel}: draft source for {into}; `sdlc retire {rel}` once drafted")
+    return planned
+
+
 def plan(folder: Path, layout: Layout, sources: list[str] = ()) -> dict:
+    planned = _plan(folder, layout, sources)
+    return _sdlc(planned, layout) if layout.sdlc else planned
+
+
+def _plan(folder: Path, layout: Layout, sources: list[str] = ()) -> dict:
     folder = Path(folder).resolve()
     ws, legacy = folder / layout.ws, folder / layout.legacy if layout.legacy else None
     if legacy and legacy.is_dir() and not legacy.is_symlink() and ws in legacy.parents:

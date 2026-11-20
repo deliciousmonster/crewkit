@@ -3,7 +3,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from crewkit import migrate, workspace
+from crewkit import migrate, sdlc, workspace
 from crewkit.migrate import Layout
 from installcase import scratch
 
@@ -53,6 +53,22 @@ class Workspace(Base):
         self.assertEqual(workspace.init(self.repo, ws, self.template), [])
         self.assertEqual((ws / "state.md").read_text(), "mine")
         self.assertEqual(workspace.policy(self.repo, ws)["commit"], "ask")
+
+    def test_init_with_sdlc_writes_the_six_deliverables_and_overwrites_none(self):
+        put(self.template, "brief.md", "the crew's own brief\n")
+        ws = self.repo / "agents/dev"
+        put(ws, "development.md", "mine\n")
+        written = workspace.init(self.repo, ws, self.template, sdlc=True)
+        self.assertEqual(sorted(w for w in written if w in sdlc.DELIVERABLES),
+                         ["brief.md", "design/feedback.md", "design/index.md", "interview.md", "requirements.md"])
+        self.assertEqual((ws / "brief.md").read_text(), "the crew's own brief\n")
+        self.assertEqual((ws / "development.md").read_text(), "mine\n")
+        self.assertEqual(workspace.init(self.repo, ws, self.template, sdlc=True), [])
+
+    def test_init_without_sdlc_writes_no_deliverable(self):
+        ws = self.repo / "agents/dev"
+        workspace.init(self.repo, ws, self.template)
+        self.assertFalse(any((ws / rel).exists() for rel in sdlc.DELIVERABLES))
 
     def test_vcs_and_workdir(self):
         self.assertEqual(workspace.vcs_of(self.tmp / "template"), "none")
@@ -318,6 +334,45 @@ class Lift(unittest.TestCase):
             migrate.apply(planned)
         self.assertTrue((self.old / "evidence-2026-10-02/soak.log").exists())
         self.assertEqual((self.repo / "agents/CLAUDE.md").read_text(), "mine\n")
+
+
+class SdlcMigrate(Base):
+    """A workspace with a legacy PLAN.md and a hybrid brief.md: scaffold only, then retire, then a clean rerun."""
+
+    def test_scaffold_only_then_retire_then_nothing(self):
+        ws = self.repo / "agents"
+        hybrid = "# Brief\n\nThe mission.\n\n## Questions and answers\n\n| Q | A |\n"
+        put(ws, "state.md", "# State\n\nThe plan: targets/demo/PLAN.md.\n")
+        put(ws, "brief.md", hybrid)
+        put(ws, "targets/demo/PLAN.md", "# Plan\n")
+        put(ws, "journal/2026-10-01.md", "Wrote targets/demo/PLAN.md.\n")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "init")
+        layout = Layout("agents", None, self.template, marker="state.md", sdlc=True,
+                        sdlc_sources={"**/PLAN.md": "design/index.md", "**/plan-*.md": "development.md"})
+        before = snapshot(ws)
+        planned = migrate.plan(self.repo, layout)
+        self.assertEqual(sorted(str(s["to"].relative_to(ws)) for s in planned["steps"]),
+                         ["design/feedback.md", "design/index.md", "development.md", "interview.md", "requirements.md"])
+        self.assertEqual({s["kind"] for s in planned["steps"]}, {"scaffold"})
+        self.assertIn("targets/demo/PLAN.md: draft source for design/index.md; `sdlc retire targets/demo/PLAN.md` once drafted",
+                      planned["review"])
+        self.assertIn("scaffold: 5", migrate.summary(planned))
+        migrate.apply(planned)
+        after = snapshot(ws)
+        self.assertEqual({k: v for k, v in after.items() if k in before}, before)  # nothing existing moved or changed
+        sdlc.retire(ws, ["targets/demo/PLAN.md"])
+        self.assertIn("archive/pre-sdlc/targets/demo/PLAN.md", (ws / "state.md").read_text())
+        self.assertIn("Wrote targets/demo/PLAN.md.", (ws / "journal/2026-10-01.md").read_text())
+        self.assertEqual((ws / "brief.md").read_text(), hybrid)
+        rerun = migrate.plan(self.repo, layout)
+        self.assertEqual(rerun["steps"], [])
+        self.assertEqual([r for r in rerun["review"] if "draft source" in r], [])
+
+    def test_a_layout_without_sdlc_plans_no_scaffold(self):
+        put(self.repo, "agents/state.md", "# State\n")
+        planned = migrate.plan(self.repo, Layout("agents", None, self.template, marker="state.md"))
+        self.assertEqual(planned["steps"], [])
 
 
 if __name__ == "__main__":

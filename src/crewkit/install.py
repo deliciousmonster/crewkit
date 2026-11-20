@@ -511,8 +511,10 @@ def lint(spec: Spec) -> int:
 
 
 def main(argv: list[str] | None = None, root: Path | None = None) -> int:
-    """`crewkit <install|uninstall|doctor|update|lint>`. A crew's own CLI passes its `root` so its command is
+    """`crewkit <install|uninstall|doctor|update|lint|sdlc>`. A crew's own CLI passes its `root` so its command is
     `<crew-cli> install`; run bare, the crew is the clone at or above --root (default: the cwd)."""
+    if (args := sys.argv[1:] if argv is None else argv)[:1] == ["sdlc"]:  # needs no crew clone; it reads a workspace
+        return __import__("crewkit.sdlc.__main__", fromlist=["main"]).main(args[1:])
     ap = argparse.ArgumentParser(prog="crewkit", description="Install a crew's Claude Code skills from its clone.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for cmd in ("install", "uninstall", "doctor", "update", "lint"):

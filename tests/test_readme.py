@@ -4,6 +4,7 @@ import contextlib
 import io
 import os
 import re
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -49,6 +50,27 @@ class Quickstart(unittest.TestCase):
 
     def test_quickstart_refusal(self):
         self.assertEqual(self.run_block("subscription"), "not run: subscription_in_api_mode\n")
+
+
+def sdlc_block() -> list[list[str]]:
+    text = README.read_text(encoding="utf-8")
+    block = re.search(r"```sh\n(.*?)```", text[text.index("## The agent SDLC"):], re.S).group(1)
+    return [shlex.split(line, comments=True) for line in block.splitlines() if line.strip()]
+
+
+class SdlcBlock(unittest.TestCase):
+    """The README's sdlc lines, run as written in an empty folder; core only."""
+
+    def test_the_lines_run(self):
+        from crewkit.install import main
+        from installcase import scratch
+
+        lines = sdlc_block()
+        self.assertEqual([a[:2] for a in lines], [["crewkit", "sdlc"]] * 3)
+        with contextlib.chdir(scratch(self)) as _, contextlib.redirect_stdout(io.StringIO()) as out:
+            codes = [main(a[1:]) for a in lines]
+        self.assertEqual(codes, [0, 0, 0], out.getvalue())
+        self.assertIn("stage brief", out.getvalue())
 
 
 if __name__ == "__main__":

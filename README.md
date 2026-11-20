@@ -101,6 +101,7 @@ The rest of this page documents each module.
 | `crewkit.install` | `crewkit install | uninstall | doctor | update | lint`: link a crew's skills from its clone into Claude Code, driven by the crew's `[tool.crewkit]` table, and check its flows' declared tools |
 | `crewkit.spec` | `load_spec(root)` reads the `[tool.crewkit]` table into a `Spec`; `find_root`, `resolve_crew_path` and `doctor` find the clone and check the box |
 | `crewkit.migrate` | `plan(folder, Layout(...), sources)` and `apply(plan)`: relocate a legacy workspace (`git worktree move` or `git mv`, leaving a link) or lift one kept inside the workspace up into it (`moves` names each entry's place; a folder placed inside another folds in file by file), aggregate records kept elsewhere, add missing template files, move `evidence-<date>/` under `evidence/<date>/` with links, normalize knowledge frontmatter, rewrite old paths; commits nothing. With the layout's `marker` in place and no legacy record left, a rerun plans nothing; a move or format between two spellings of one file (INDEX.md and index.md on a case-insensitive volume) renames it through a free name and never writes one over the other |
+| `crewkit.sdlc` | The agent SDLC every crew follows (see "The agent SDLC"): `projects`, `status`, `next_gate`, `scaffold`, `approve`, `change`, `retire`, `line`, `guide`, and `crewkit.sdlc.lint.lint`; templates in `crewkit/templates/sdlc/`. `workspace.init(..., sdlc=True)` and `Layout(sdlc=True, sdlc_sources=...)` scaffold the deliverables a workspace lacks and move nothing |
 
 `CREW_LLM_BACKEND` is `api` (CrewAI's Anthropic provider and `ANTHROPIC_API_KEY`), `plan` (`claude -p`,
 with the key removed from the child's environment) or `auto`, the default, which takes the key when
@@ -123,9 +124,41 @@ stop word, or was rewritten from tool-call markup, starts a new process with the
 most eight idle processes are kept, and all close when the run exits. `CREW_PLAN_PERSIST=0` restores
 one process per call.
 
+## The agent SDLC
+
+Every crew delivers a project through five documents in its workspace: `brief.md` (what to
+deliver, in the owner's words), `interview.md` (the agent's questions and the owner's quoted
+answers), `requirements.md` (`REQ-n` entries with success and acceptance, signed by the owner),
+`design/` (an index, one doc per component, and review rounds in `feedback.md`) and
+`development.md` (`TASK-n` rows tracked to done, and acceptance per requirement). The crew keeps its
+own roles and tasks; crewkit owns the documents, the three owner gates and the lint.
+
+```sh
+crewkit sdlc init            # write the deliverables the workspace lacks; never overwrites
+crewkit sdlc status          # the stage, each gate and what is next
+crewkit sdlc lint --strict   # every check; warnings fail too
+```
+
+The stage is computed from the files: brief, interview, requirements, design, development,
+acceptance, done. `crewkit sdlc approve <requirements|design|acceptance> --by owner --words "..."`
+records a gate as a row in the document's `## Sign-off` table with a hash of what was approved, and
+`lint` reports an edit made after it. A change after sign-off goes through `crewkit sdlc change`
+and `crewkit sdlc approve CR-<n>`, which bumps the requirements' `rev`. `crewkit sdlc retire <path>`
+moves a superseded plan to `archive/pre-sdlc/` and rewrites references to it outside `journal/`,
+`evidence/` and `archive/`. `crewkit sdlc guide` prints the whole process in one page.
+
+Every command reads only the deliverables, at the workspace root or under `projects/<slug>/`; a test
+runs `status` and `lint` beside 30,000 files in `evidence/` and checks that none is opened. Exit
+codes are 0 clean, 1 findings or a refusal, 2 usage. A crew adds `"sdlc": "crewkit.sdlc"` to its
+`crewkit.commands.dispatch` table to offer `<crew> sdlc ...`.
+
+crewkit cannot tell an owner's words from an agent's claim. A crew lets only its Lead run `approve`,
+after the owner has answered; the hash makes a later silent edit visible, not a forged approval
+impossible.
+
 ## The `run` extra
 
-The core needs only `pyyaml`: `import crewkit`, `crewkit.workspace`, `crewkit.migrate`, `crewkit.spec` and `crewkit.install` never import CrewAI. CrewAI and crewai-tools (pinned, Python below 3.14) are the extra `crewkit[run]`, needed for `crewkit.builder`, `crewkit.cli` and `crewkit.plan_llm`, the headless path. `crewkit.agent_sdk` needs `crewkit[agent-sdk]` and `crewkit.databricks_gateway` `crewkit[databricks]`; both import their SDK only when called. A crew depends on plain `crewkit` and offers its own extra, for example `employmentcrew[run] = ["crewkit[run]"]`.
+The core needs only `pyyaml`: `import crewkit`, `crewkit.workspace`, `crewkit.migrate`, `crewkit.sdlc`, `crewkit.spec` and `crewkit.install` never import CrewAI. CrewAI and crewai-tools (pinned, Python below 3.14) are the extra `crewkit[run]`, needed for `crewkit.builder`, `crewkit.cli` and `crewkit.plan_llm`, the headless path. `crewkit.agent_sdk` needs `crewkit[agent-sdk]` and `crewkit.databricks_gateway` `crewkit[databricks]`; both import their SDK only when called. A crew depends on plain `crewkit` and offers its own extra, for example `examplecrew[run] = ["crewkit[run]"]`.
 
 ## The Agent SDK path
 

@@ -1,6 +1,6 @@
 [project]
 name = "crewkit"
-version = "0.16.2"
+version = "0.17.0"
 description = "A billing-gated entry to the Claude Agent SDK, an optional Databricks AI Gateway route, and the runtime CrewAI crews share."
 readme = "README.md"
 license = "MIT"

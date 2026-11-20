@@ -4,6 +4,40 @@ Each release is an annotated git tag, `vX.Y.Z`; a consumer pins it in `[tool.uv.
 "Consumers" line says what moving a pin to that release changes. Entries before 0.16.0 are
 summarised from the tag messages and release commits.
 
+## 0.17.0 (2026-11-20)
+
+A minor release: the public API grows and no name changes.
+
+- `crewkit.sdlc`, the agent SDLC every crew follows: five deliverables per project (`brief.md`,
+  `interview.md`, `requirements.md`, `design/`, `development.md`) at the workspace root or under
+  `projects/<slug>/`, the stage computed from them, and three owner gates recorded as `## Sign-off`
+  rows with a hash of what was signed. `status`, `next_gate`, `scaffold`, `approve`, `change`
+  (change requests, which bump the requirements' `rev`), `retire` (to `archive/pre-sdlc/`, with
+  references rewritten outside `journal/`, `evidence/` and `archive/`), `line` for a SessionStart
+  hook, `guide`, `SDLC_MAP` for a crew's workspace map, and `crewkit.sdlc.lint.lint`.
+- `crewkit sdlc status | next | lint [--strict] [--json] | init | approve | change | retire | guide`;
+  a crew offers it as `<crew> sdlc` with one `crewkit.commands.dispatch` line,
+  `"sdlc": "crewkit.sdlc"`. Exit 0 clean, 1 findings or a refusal, 2 usage.
+- Lint errors: a deliverable missing for the stage, a required heading missing, an unknown status, a
+  later gate signed before an earlier one, a sign-off with no words, a signed section edited since
+  (for requirements, unless a change request is proposed), a duplicate id, a citation of a REQ that
+  does not exist, an interview marked complete with a question open. Warnings: a requirement without
+  Success or Acceptance, a `must` requirement no design doc or no task cites, a design doc stale
+  against `requirements_rev`, a brief changed since the interview's `brief_hash`, a `done` task with
+  no evidence on disk, open feedback on an approved design, a task with no ticket when a tracker is
+  set, a `shared_with` copy that differs.
+- Templates for the five deliverables and a one-page `GUIDE.md` ship in
+  `crewkit/templates/sdlc/`.
+- `workspace.init(..., sdlc=True)` writes the deliverables the crew's own template lacks, never over
+  a file. `migrate.Layout` gains `sdlc` and `sdlc_sources`; with `sdlc`, `plan` adds a `scaffold`
+  step per missing deliverable and a review line per draft source it finds, and moves nothing.
+- Every command reads only the deliverables; a test builds 30,000 files under `evidence/` and checks
+  that `status`, `lint` and `retire` open none of them.
+
+Consumers: a pin and lock change. Both `sdlc` switches default to off, so a crew that passes neither
+is untouched; one that passes `sdlc=True` gets the five documents scaffolded on its next init or
+migrate.
+
 ## 0.16.2 (2026-11-20)
 
 A patch release: no public name changes.
