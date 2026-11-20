@@ -103,6 +103,7 @@ The rest of this page documents each module.
 | `crewkit.spec` | `load_spec(root)` reads the `[tool.crewkit]` table into a `Spec`; `find_root`, `resolve_crew_path` and `doctor` find the clone and check the box |
 | `crewkit.migrate` | `plan(folder, Layout(...), sources)` and `apply(plan)`: relocate a legacy workspace (`git worktree move` or `git mv`, leaving a link) or lift one kept inside the workspace up into it (`moves` names each entry's place; a folder placed inside another folds in file by file), aggregate records kept elsewhere, add missing template files, move `evidence-<date>/` under `evidence/<date>/` with links, normalize knowledge frontmatter, rewrite old paths; commits nothing. With the layout's `marker` in place and no legacy record left, a rerun plans nothing; a move or format between two spellings of one file (INDEX.md and index.md on a case-insensitive volume) renames it through a free name and never writes one over the other |
 | `crewkit.sdlc` | The agent SDLC every crew follows (see "The agent SDLC"): `projects`, `status`, `next_gate`, `scaffold`, `approve`, `change`, `retire`, `line`, `guide`, and `crewkit.sdlc.lint.lint`; templates in `crewkit/templates/sdlc/`. `workspace.init(..., sdlc=True)` and `Layout(sdlc=True, sdlc_sources=...)` scaffold the deliverables a workspace lacks and move nothing |
+| `crewkit.denylist` | `check(root)`, `assert_clean(test, root)` and `crewkit denylist [--dir]`: a repository's tracked files against a private-terms list kept outside it, plus a structural check for home-directory paths and real email addresses (see "Private terms") |
 
 `CREW_LLM_BACKEND` is `api` (CrewAI's Anthropic provider and `ANTHROPIC_API_KEY`), `plan` (`claude -p`,
 with the key removed from the child's environment) or `auto`, the default, which takes the key when
@@ -157,9 +158,49 @@ crewkit cannot tell an owner's words from an agent's claim. A crew lets only its
 after the owner has answered; the hash makes a later silent edit visible, not a forged approval
 impossible.
 
+## Private terms
+
+A public repository should hold no private name, path or address. `crewkit denylist` scans the
+files `git ls-files` lists, except `uv.lock`, against a list kept outside the repository:
+`$CREWKIT_PRIVATE_TERMS`, or `~/.config/crewkit/private-terms`, with one case-insensitive regex per
+line and `#` comments. A hit prints as `path:line: term N`, where N is the term's line in the list;
+the term itself is never printed, so a failing log doesn't leak it. With no list installed the term
+scan is skipped and the reason printed.
+
+A structural check runs with or without a list: a `/Users/<name>/` or `/home/<name>/` path, or an
+email address outside `example.com`, `example.org`, `example.net` and `users.noreply.github.com`,
+is a hit. Exit codes are 0 clean, 1 hits, 2 an unreadable list or a bad regex.
+
+A crew's test is three lines:
+
+```python
+class PrivateTerms(unittest.TestCase):
+    def test_clean(self):
+        denylist.assert_clean(self, ROOT)
+```
+
+It fails on a hit and skips, with the reason, when the structural check passes and no list is
+installed. To stop a hit before it is committed, run it as a pre-commit hook:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: private-terms
+        name: private terms
+        entry: uv run crewkit denylist
+        language: system
+        pass_filenames: false
+```
+
+crewkit's CI runs the term scan only when the repository secret `PRIVATE_TERMS` is set: the step
+writes it to a temporary file and points `CREWKIT_PRIVATE_TERMS` at it. Without the secret, and on
+forks, the step skips.
+
 ## The `run` extra
 
-The core needs only `pyyaml`: `import crewkit`, `crewkit.workspace`, `crewkit.migrate`, `crewkit.sdlc`, `crewkit.spec` and `crewkit.install` never import CrewAI. CrewAI and crewai-tools (pinned, Python below 3.14) are the extra `crewkit[run]`, needed for `crewkit.builder`, `crewkit.cli` and `crewkit.plan_llm`, the headless path. `crewkit.agent_sdk` needs `crewkit[agent-sdk]` and `crewkit.databricks_gateway` `crewkit[databricks]`; both import their SDK only when called. A crew depends on plain `crewkit` and offers its own extra, for example `examplecrew[run] = ["crewkit[run]"]`.
+The core needs only `pyyaml`: `import crewkit`, `crewkit.workspace`, `crewkit.migrate`, `crewkit.sdlc`, `crewkit.denylist`, `crewkit.spec` and `crewkit.install` never import CrewAI. CrewAI and crewai-tools (pinned, Python below 3.14) are the extra `crewkit[run]`, needed for `crewkit.builder`, `crewkit.cli` and `crewkit.plan_llm`, the headless path. `crewkit.agent_sdk` needs `crewkit[agent-sdk]` and `crewkit.databricks_gateway` `crewkit[databricks]`; both import their SDK only when called. A crew depends on plain `crewkit` and offers its own extra, for example `examplecrew[run] = ["crewkit[run]"]`.
 
 ## The Agent SDK path
 

@@ -29,6 +29,15 @@ jobs:
       - name: Tests
         # CREWKIT_LIVE stays unset: the live tests need a signed-in Claude Code
         run: uv run --locked python -m unittest discover -s tests
+      - name: Private terms
+        # Optional: the PRIVATE_TERMS secret holds the list; unset (and on forks) the step skips.
+        env:
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
+        run: |
+          if [ -z "$PRIVATE_TERMS" ]; then echo "PRIVATE_TERMS is not set; the term scan is skipped"; exit 0; fi
+          list="$RUNNER_TEMP/private-terms"
+          printf '%s\n' "$PRIVATE_TERMS" > "$list"
+          CREWKIT_PRIVATE_TERMS="$list" uv run --locked crewkit denylist
 
   crewai:
     runs-on: ubuntu-latest

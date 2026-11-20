@@ -33,10 +33,18 @@ A minor release: the public API grows and no name changes.
   step per missing deliverable and a review line per draft source it finds, and moves nothing.
 - Every command reads only the deliverables; a test builds 30,000 files under `evidence/` and checks
   that `status`, `lint` and `retire` open none of them.
+- `crewkit.denylist` and `crewkit denylist [--dir]`: tracked files (not `uv.lock`) against a
+  private-terms list kept outside the repository (`$CREWKIT_PRIVATE_TERMS` or
+  `~/.config/crewkit/private-terms`), reported as `path:line` and the term's line in the list, never
+  the term; skipped with the reason when no list is installed. A structural check needs no list and
+  flags home-directory paths and email addresses outside the example and noreply domains.
+  `assert_clean(test, root)` is a crew's three-line test. CI runs the term scan when the
+  `PRIVATE_TERMS` secret is set.
+- Examples, docstrings and test fixtures use generic crew, skill and command names.
 
 Consumers: a pin and lock change. Both `sdlc` switches default to off, so a crew that passes neither
 is untouched; one that passes `sdlc=True` gets the five documents scaffolded on its next init or
-migrate.
+migrate. A crew may add the three-line `denylist.assert_clean` test.
 
 ## 0.16.2 (2026-11-20)
 

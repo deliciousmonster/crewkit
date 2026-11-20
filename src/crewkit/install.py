@@ -510,11 +510,14 @@ def lint(spec: Spec) -> int:
     return 1 if found else 0
 
 
+CLONELESS = {"sdlc": "crewkit.sdlc.__main__", "denylist": "crewkit.denylist"}
+
+
 def main(argv: list[str] | None = None, root: Path | None = None) -> int:
-    """`crewkit <install|uninstall|doctor|update|lint|sdlc>`. A crew's own CLI passes its `root` so its command is
+    """`crewkit <install|uninstall|doctor|update|lint|sdlc|denylist>`. A crew's own CLI passes its `root` so its command is
     `<crew-cli> install`; run bare, the crew is the clone at or above --root (default: the cwd)."""
-    if (args := sys.argv[1:] if argv is None else argv)[:1] == ["sdlc"]:  # needs no crew clone; it reads a workspace
-        return __import__("crewkit.sdlc.__main__", fromlist=["main"]).main(args[1:])
+    if (args := sys.argv[1:] if argv is None else argv)[:1] and args[0] in CLONELESS:  # these need no crew clone
+        return __import__(CLONELESS[args[0]], fromlist=["main"]).main(args[1:])
     ap = argparse.ArgumentParser(prog="crewkit", description="Install a crew's Claude Code skills from its clone.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for cmd in ("install", "uninstall", "doctor", "update", "lint"):
