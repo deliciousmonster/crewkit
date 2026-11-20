@@ -145,7 +145,7 @@ def _references(folder: Path, layout: Layout, skip: list[Path]) -> list[dict]:
 
 
 MAP = re.compile(r"<!-- map[\s\S]*?<!-- /map -->\n?")
-EDGE = r"(?<![\w.-]){}(?![\w-]|\.[\w-])"  # a path, not the start of a longer name; a sentence's period ends it
+EDGE = r"(?<![\w./~-]){}(?![\w-]|\.[\w-])"  # a whole path: not another path's tail nor a longer name's start; a period ends it
 
 
 def _within(rel: str, paths: list[str]) -> bool:

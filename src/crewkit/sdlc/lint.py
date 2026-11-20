@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from crewkit.sdlc import GATES, STAGES, Finding, Set
-from crewkit.sdlc.doc import REQ_ID, Doc, digest
+from crewkit.sdlc.doc import REQ_ID, Doc, as_int, digest
 
 REQUIRED_AT = {"interview": ["interview.md"], "requirements": ["requirements.md"],
                "design": ["design/index.md", "design/feedback.md"], "development": ["development.md"]}
@@ -44,7 +44,7 @@ class _Lint:
         return {k: v for k, v in named.items() if v}
 
     def run(self) -> list[Finding]:
-        for check in (self.deliverables, self.shape, self.gates, self.ids, self.coverage, self.staleness, self.progress,
+        for check in (self.unreadable, self.deliverables, self.shape, self.gates, self.ids, self.coverage, self.staleness, self.progress,
                       self.shared):
             check()
         return self.out
@@ -55,19 +55,28 @@ class _Lint:
         for rel in reached:
             if not (self.root / rel).is_file():
                 self.add("error", "missing-deliverable", rel, f"missing at stage {stage}; `sdlc init` writes it")
-        if s.index and s.profile() == "full":
-            listed = [r.get("doc", "").strip("` ") for r in s.index.table("Components")]
-            for name in [n for n in listed if n and n not in ("index.md", "-")]:
-                if not (self.root / "design" / Path(name).name).is_file():
-                    self.add("warning", "missing-component", s.index, f"Components names {name}, which does not exist")
-            if not s.components and stage not in ("brief", "interview", "requirements"):
-                self.add("warning", "missing-component", s.index, "profile full and no component doc under design/")
+        if s.index and s.profile() == "full" and not s.components and STAGES.index(stage) >= STAGES.index("design"):
+            self.add("warning", "missing-component", s.index, "profile full and no component doc under design/")
 
     def headings(self, d: Doc, wants: list[str]) -> None:
         have = [h.lower() for h in d.headings()]
         for want in wants:
             if not any(h.startswith(want.lower()) for h in have):
                 self.add("error", "missing-heading", d, f"no `## {want}`")
+
+    def unreadable(self) -> None:
+        s = self.s
+        for d in [*self.docs().values(), *s.components]:
+            if d.error:
+                self.add("error", "unreadable", d, d.error)
+        numbers: list[tuple[Doc | None, str]] = [(s.requirements, "rev"), *((d, "requirements_rev") for d in self.design_docs())]
+        for doc, key in numbers:
+            if doc and doc.meta.get(key) is not None and as_int(doc.meta[key]) is None:
+                self.add("error", "unreadable", doc, f"{key} {doc.meta[key]!r} is not a number")
+        for gate in GATES:
+            for r in s.signoffs(gate):
+                if as_int(r.get("rev")) is None:
+                    self.add("error", "unreadable", s.doc(gate) or "", f"sign-off rev {r.get('rev')!r} is not a number")
 
     def shape(self) -> None:
         for rel, d in self.docs().items():
@@ -93,8 +102,8 @@ class _Lint:
 
     def gates(self) -> None:
         s = self.s
-        order = list(GATES)
-        for gate in order:
+        stage = STAGES.index(s.stage())
+        for gate in GATES:
             doc = s.doc(gate)
             rows = s.signoffs(gate)
             if doc is None or not rows:
@@ -102,19 +111,22 @@ class _Lint:
             for r in rows:
                 if not r.get("words", "").strip('" '):
                     self.add("error", "signoff-no-words", doc, f"{GATES[gate]} sign-off rev {r.get('rev', '?')} has no words")
-            earlier = [g for g in order[: order.index(gate)] if not s.signed(g)]
-            if earlier and s.signed(gate):
-                self.add("error", "out-of-order", doc, f"{GATES[gate]} signed while {', '.join(earlier)} is not")
+            if s.signed(gate) and stage < STAGES.index(gate):
+                self.add("error", "out-of-order", doc, f"{GATES[gate]} signed while the project is at stage {s.stage()}")
             if (signed := rows[-1].get("hash", "")) and signed != s.hash(gate):
                 self.drifted(gate, doc)
 
     def drifted(self, gate: str, doc: Doc) -> None:
         if gate == "requirements":
-            pending = [e.id for e in doc.entries("Changes") if e.fields.get("status") == "proposed"]
-            if pending:
-                self.add("warning", "pending-change", doc, f"requirements edited since sign-off; awaiting {', '.join(pending)}")
+            changed, proposed = self.s.changed_reqs(), self.s.proposed()
+            known = set(self.s.reqs())
+            covered = set().union(*(a for a in proposed.values() if a <= known))
+            if changed and changed <= covered:
+                self.add("warning", "pending-change", doc, f"{', '.join(sorted(changed))} edited since sign-off; "
+                         f"awaiting {', '.join(proposed)}")
             else:
-                self.add("error", "edited-after-signoff", doc, "a requirement changed after sign-off with no change request")
+                what = ", ".join(sorted(changed or {"the Requirements section"}))
+                self.add("error", "edited-after-signoff", doc, f"{what} changed after sign-off with no change request naming it")
         elif gate == "design":
             self.add("error", "edited-after-signoff", doc, "design changed after G2; record a feedback round and re-approve")
         else:
@@ -172,9 +184,9 @@ class _Lint:
             if e.fields.get("status") == "approved" and (rev := re.match(r"\d+", e.fields.get("rev", ""))):
                 for r in REQ_ID.findall(e.fields.get("affects", "")):
                     revs[r] = max(revs.get(r, 1), int(rev.group()))
-        base = int((s.index.meta.get("requirements_rev") if s.index else None) or 1)
+        base = as_int(s.index.meta.get("requirements_rev") if s.index else 1) or 1
         for d in self.design_docs():
-            have = int(d.meta.get("requirements_rev") or base)
+            have = as_int(d.meta.get("requirements_rev") or base) or base
             stale = sorted(r for r in set(REQ_ID.findall(d.body)) if revs.get(r, 1) > have)
             if stale:
                 self.add("warning", "stale-design", d, f"requirements_rev {have} is below the rev of {', '.join(stale)}")
@@ -203,7 +215,14 @@ class _Lint:
                 continue
             path = Path(other).expanduser()
             path = path if path.is_absolute() else d.path.parent / path
-            if path.is_file() and _shared_hash(path.read_text(encoding="utf-8")) != _shared_hash(d.text):
+            if not path.is_file():
+                continue
+            try:
+                theirs = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                self.add("error", "unreadable", d, f"its shared copy {other} is not UTF-8 text")
+                continue
+            if _shared_hash(theirs) != _shared_hash(d.text):
                 self.add("warning", "shared-drift", d, f"differs from its shared copy {other}")
 
 

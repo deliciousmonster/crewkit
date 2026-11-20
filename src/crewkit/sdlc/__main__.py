@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -21,13 +22,19 @@ def workspace(path: Path) -> Path:
     return p
 
 
-def chosen(ws: Path, slug: str | None, *, all_ok: bool) -> list[Path]:
-    if slug:
-        return [ws / "projects" / slug]
-    found = sdlc.projects(ws)
-    if all_ok:
-        return found
-    return [ws]
+class Usage(Exception):
+    """A command line that names nothing to act on."""
+
+
+def chosen(ws: Path, slug: str | None, *, all_ok: bool, create: bool = False) -> list[Path]:
+    if slug is None:
+        return sdlc.projects(ws) if all_ok else [ws]
+    if not re.fullmatch(r"[\w][\w.-]*", slug):
+        raise Usage(f"--project {slug!r} is not a project name")
+    project = ws / "projects" / slug
+    if not create and not (project / "brief.md").is_file():
+        raise Usage(f"no project {slug!r}: {project} holds no brief.md")
+    return [project]
 
 
 def _status(found: list[Path], ws: Path) -> int:
@@ -90,7 +97,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def _write(a: argparse.Namespace, ws: Path) -> None:
-    project = chosen(ws, a.project, all_ok=False)[0]
+    project = chosen(ws, a.project, all_ok=False, create=a.cmd == "init")[0]
     if a.cmd == "init":
         written = sdlc.scaffold(project, a.profile)
         print("\n".join(f"wrote {project / w}" for w in written) or "init: every deliverable exists; nothing written")
@@ -105,24 +112,27 @@ def main(argv: list[str] | None = None) -> int:
         a = parser().parse_args(argv)
     except SystemExit as e:
         return 0 if e.code == 0 else 2
-    ws = workspace(a.ws)
-    found = chosen(ws, a.project, all_ok=True)
     try:
-        if a.cmd == "status":
-            return _status(found, ws)
-        if a.cmd == "lint":
-            return _lint(found, ws, a.strict, a.json)
-        if a.cmd == "guide":
-            print(sdlc.guide(), end="")
-        elif a.cmd == "next":
-            print("\n".join(sdlc.next_gate(p) for p in found) or sdlc.line(ws))
-        elif a.cmd == "retire":
-            print("\n".join(sdlc.retire(ws, a.paths)))
-        else:
-            _write(a, ws)
-    except sdlc.Refused as e:
+        return _run(a, workspace(a.ws))
+    except (sdlc.Refused, Usage, OSError, UnicodeError, ValueError) as e:
         print(f"sdlc: {e}", file=sys.stderr)
-        return 1
+        return 1 if isinstance(e, sdlc.Refused) else 2
+
+
+def _run(a: argparse.Namespace, ws: Path) -> int:
+    found = chosen(ws, a.project, all_ok=True, create=a.cmd == "init")
+    if a.cmd == "status":
+        return _status(found, ws)
+    if a.cmd == "lint":
+        return _lint(found, ws, a.strict, a.json)
+    if a.cmd == "guide":
+        print(sdlc.guide(), end="")
+    elif a.cmd == "next":
+        print("\n".join(sdlc.next_gate(p) for p in found) or sdlc.line(ws))
+    elif a.cmd == "retire":
+        print("\n".join(sdlc.retire(ws, a.paths)))
+    else:
+        _write(a, ws)
     return 0
 
 

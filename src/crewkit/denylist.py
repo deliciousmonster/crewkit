@@ -3,7 +3,8 @@ a structural check that needs no list (home-directory paths and real-looking ema
 
 The list is `$CREWKIT_PRIVATE_TERMS` or `~/.config/crewkit/private-terms`: one case-insensitive regex per line, `#`
 comments and blank lines ignored. A hit prints as `path:line` with the term's line number in the list, never the
-term, so a failing log does not leak what it protects. A crew's test is three lines:
+term, so a failing log does not leak what it protects; a file whose name holds a term prints as `file #N`, its
+index in `git ls-files`. A crew's test is three lines:
 
     class PrivateTerms(unittest.TestCase):
         def test_clean(self):
@@ -30,12 +31,12 @@ EMAIL_OK = re.compile(r"(^|\.)(example\.(com|org|net)|users\.noreply\.github\.co
 
 @dataclass
 class Hit:
-    path: str
-    line: int
+    path: str  # the tracked path, or "file #N" when the name itself holds a term
+    line: int  # 0 for a hit in the name
     what: str  # "term N" (its line in the list), "home path" or "email"
 
     def __str__(self) -> str:
-        return f"{self.path}:{self.line}: {self.what}"
+        return f"{self.path}{f':{self.line}' if self.line else ''}: {self.what}"
 
 
 def terms_path() -> Path:
@@ -50,9 +51,12 @@ def load(path: Path) -> list[tuple[int, re.Pattern[str]]]:
         if not term or term.startswith("#"):
             continue
         try:
-            out.append((n, re.compile(term, re.I)))
+            rx = re.compile(term, re.I)
         except re.error:
             raise ValueError(f"{path} line {n}: not a valid regex") from None
+        if rx.search(""):
+            raise ValueError(f"{path} line {n}: matches empty text, so it would match every line")
+        out.append((n, rx))
     return out
 
 
@@ -61,39 +65,53 @@ def tracked(root: Path) -> list[str]:
     return [p for p in done.stdout.split("\0") if p and Path(p).name not in EXCLUDED]
 
 
-def _lines(root: Path):
-    for rel in tracked(root):
+Terms = list[tuple[int, re.Pattern[str]]]
+
+
+def _files(root: Path, terms: Terms) -> list[tuple[str, str, list[Hit]]]:
+    """Each tracked file as (path, its label in a report, the hits in its name)."""
+    out = []
+    for i, rel in enumerate(tracked(root), 1):
+        named = [Hit(f"file #{i}", 0, f"term {t}") for t, rx in terms if rx.search(rel)]
+        out.append((rel, f"file #{i}" if named else rel, named))
+    return out
+
+
+def _lines(root: Path, files: list[tuple[str, str, list[Hit]]]):
+    for rel, label, _ in files:
         try:
             data = (root / rel).read_bytes()
         except OSError:  # a deleted file still in the index, or a submodule
             continue
         if b"\0" not in data:
-            yield from ((rel, n, text) for n, text in enumerate(data.decode("utf-8", "replace").splitlines(), 1))
+            yield from ((label, n, text) for n, text in enumerate(data.decode("utf-8", "replace").splitlines(), 1))
 
 
-def scan(root: Path, terms: list[tuple[int, re.Pattern[str]]]) -> list[Hit]:
-    return [Hit(rel, n, f"term {t}") for rel, n, text in _lines(Path(root)) for t, rx in terms if rx.search(text)]
+def scan(root: Path, terms: Terms) -> list[Hit]:
+    """Hits in file names and file contents; a path whose name holds a term is never printed."""
+    files = _files(Path(root), terms)
+    named = [h for _, _, hits in files for h in hits]
+    return named + [Hit(label, n, f"term {t}") for label, n, text in _lines(Path(root), files) for t, rx in terms if rx.search(text)]
 
 
-def structural(root: Path) -> list[Hit]:
+def structural(root: Path, terms: Terms | None = None) -> list[Hit]:
     """Home-directory paths and email addresses outside the example and noreply domains; needs no list."""
     hits = []
-    for rel, n, text in _lines(Path(root)):
+    for label, n, text in _lines(Path(root), _files(Path(root), terms or [])):
         if any(m.group(1).lower() not in HOME_OK for m in HOME.finditer(text)):
-            hits.append(Hit(rel, n, "home path"))
+            hits.append(Hit(label, n, "home path"))
         if any(not EMAIL_OK.search(m.group(1)) for m in EMAIL.finditer(text)):
-            hits.append(Hit(rel, n, "email"))
+            hits.append(Hit(label, n, "email"))
     return hits
 
 
 def check(root: Path) -> tuple[list[Hit], str | None]:
     """Every hit, and why the term scan was skipped (no list), or None when it ran."""
-    root = Path(root)
-    hits = structural(root)
-    path = terms_path()
+    root, path = Path(root), terms_path()
     if not path.is_file():
-        return hits, f"no private-terms list at {path} (set ${ENV}); the term scan is skipped"
-    return hits + scan(root, load(path)), None
+        return structural(root), f"no private-terms list at {path} (set ${ENV}); the term scan is skipped"
+    terms = load(path)
+    return structural(root, terms) + scan(root, terms), None
 
 
 def assert_clean(test: unittest.TestCase, root: Path) -> None:
@@ -117,9 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, subprocess.CalledProcessError, OSError) as e:
         print(f"denylist: {e}", file=sys.stderr)
         return 2
-    print("\n".join(map(str, hits)) or "denylist: no hits")
     if skipped:
         print(f"denylist: {skipped}")
+    print("\n".join(map(str, hits)) or "denylist: no hits")
     return 1 if hits else 0
 
 

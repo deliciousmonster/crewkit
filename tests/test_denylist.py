@@ -112,3 +112,21 @@ class Crewkit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FileNames(Synthetic):
+    """Review round 1: a term in a tracked file's name is found, and the name is never printed."""
+
+    def test_a_term_in_a_file_name_is_reported_by_index(self):
+        self.add("a.md", "fine\n")
+        self.add("docs/globex-notes.md", "intro\nInitrode Labs\n")
+        code, out = self.cli()
+        self.assertEqual(code, 1)
+        self.assertIn("file #2: term 3", out)
+        self.assertIn("file #2:2: term 4", out)
+        self.assertNotIn("lobex", out.lower())
+
+    def test_a_pattern_matching_empty_text_is_refused(self):
+        self.list.write_text("zzz|\n")
+        self.add("a.md", "x\n")
+        self.assertEqual(self.cli()[0], 2)

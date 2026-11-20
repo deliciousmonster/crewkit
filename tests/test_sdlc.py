@@ -159,7 +159,7 @@ class Gates(unittest.TestCase):
         before = (self.p / "requirements.md").read_text()
         cases = {
             "words are required": lambda: sdlc.approve(self.p, "requirements", "owner", "  "),
-            "not approved yet": lambda: sdlc.approve(self.p, "design", "owner", "ok"),
+            "at stage requirements": lambda: sdlc.approve(self.p, "design", "owner", "ok"),
             "kind is approved or adopted": lambda: sdlc.approve(self.p, "requirements", "owner", "ok", kind="maybe"),
             "gate is requirements": lambda: sdlc.approve(self.p, "build", "owner", "ok"),
         }
@@ -354,7 +354,7 @@ class LintCodes(unittest.TestCase):
 
 class Retire(unittest.TestCase):
     def setUp(self):
-        self.ws = scratch(self)
+        self.ws = scratch(self) / "agents"
         files = {"targets/demo/PLAN.md": "plan\n", "state/state.md": "See targets/demo/PLAN.md and agents/targets/demo/PLAN.md.\n",
                  "knowledge/x.md": "Per `targets/demo/PLAN.md`. Not targets/demo/PLAN.md.bak.\n",
                  "journal/2026-01-01.md": "Wrote targets/demo/PLAN.md.\n", "evidence/2026-01-01/n.md": "targets/demo/PLAN.md\n"}
@@ -439,7 +439,7 @@ class Cli(unittest.TestCase):
         code, out = self.run_cli("approve", "CR-001", "--by", "owner", "--words", "fine")
         self.assertEqual(code, 0, out)
         code, out = self.run_cli("--project", "x", "approve", "requirements", "--words", "ok")
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)  # no such project
 
     def test_usage_is_2(self):
         self.assertEqual(self.run_cli("bogus")[0], 2)

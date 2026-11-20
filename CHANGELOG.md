@@ -13,14 +13,21 @@ A minor release: the public API grows and no name changes.
   `projects/<slug>/`, the stage computed from them, and three owner gates recorded as `## Sign-off`
   rows with a hash of what was signed. `status`, `next_gate`, `scaffold`, `approve`, `change`
   (change requests, which bump the requirements' `rev`), `retire` (to `archive/pre-sdlc/`, with
-  references rewritten outside `journal/`, `evidence/` and `archive/`), `line` for a SessionStart
+  each reference to the moved file rewritten outside `journal/`, `evidence/` and `archive/`), `line` for a SessionStart
   hook, `guide`, `SDLC_MAP` for a crew's workspace map, and `crewkit.sdlc.lint.lint`.
 - `crewkit sdlc status | next | lint [--strict] [--json] | init | approve | change | retire | guide`;
   a crew offers it as `<crew> sdlc` with one `crewkit.commands.dispatch` line,
-  `"sdlc": "crewkit.sdlc"`. Exit 0 clean, 1 findings or a refusal, 2 usage.
+  `"sdlc": "crewkit.sdlc"`. Exit 0 clean, 1 findings or a refusal, 2 usage (a `--project` that does
+  not exist or is not a plain name included).
+- `approve` refuses a gate before its stage (G1 needs the brief ready and the interview closed, G2
+  approved requirements, G3 every task done or dropped and every `must` passing) and while lint has
+  an error. Requirements are approved once; later edits go through `change` and `approve CR-<n>`,
+  and `change` refuses a REQ that does not exist.
 - Lint errors: a deliverable missing for the stage, a required heading missing, an unknown status, a
-  later gate signed before an earlier one, a sign-off with no words, a signed section edited since
-  (for requirements, unless a change request is proposed), a duplicate id, a citation of a REQ that
+  gate signed while the project is at an earlier stage, a sign-off with no words, a signed section
+  edited since (for requirements, unless a proposed change request names every REQ whose text
+  changed; G1 records a digest per REQ in `signed_reqs`), front matter, a rev or a shared copy
+  that cannot be read (`unreadable`), a duplicate id, a citation of a REQ that
   does not exist, an interview marked complete with a question open. Warnings: a requirement without
   Success or Acceptance, a `must` requirement no design doc or no task cites, a design doc stale
   against `requirements_rev`, a brief changed since the interview's `brief_hash`, a `done` task with
@@ -36,7 +43,8 @@ A minor release: the public API grows and no name changes.
 - `crewkit.denylist` and `crewkit denylist [--dir]`: tracked files (not `uv.lock`) against a
   private-terms list kept outside the repository (`$CREWKIT_PRIVATE_TERMS` or
   `~/.config/crewkit/private-terms`), reported as `path:line` and the term's line in the list, never
-  the term; skipped with the reason when no list is installed. A structural check needs no list and
+  the term; a file whose name holds a term is reported as `file #N`, its index in `git ls-files`.
+  A pattern that matches empty text is refused. Skipped with the reason when no list is installed. A structural check needs no list and
   flags home-directory paths and email addresses outside the example and noreply domains.
   `assert_clean(test, root)` is a crew's three-line test. CI runs the term scan when the
   `PRIVATE_TERMS` secret is set.

@@ -15,6 +15,7 @@ ENTRY = re.compile(r"(?m)^### +((?:REQ|Q|CR|FB|TASK)-\d+)\b *(.*)$")
 FIELD = re.compile(r"(?m)^- +([A-Za-z][\w ]*?):[ \t]*(.*)$")
 REQ_ID = re.compile(r"\bREQ-\d+\b")
 CELL = re.compile(r"(?<!\\)\|")
+SIGNOFF_HEAD = "| Rev | Date | Approver | Kind | Words | Hash |\n|---|---|---|---|---|---|"
 
 
 def digest(text: str) -> str:
@@ -23,11 +24,19 @@ def digest(text: str) -> str:
     return hashlib.sha256(norm.encode()).hexdigest()[:12]
 
 
+def as_int(value: object) -> int | None:
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
 @dataclass
 class Entry:
     id: str
     title: str
     fields: dict[str, str]
+    text: str  # the whole entry, heading included
 
 
 @dataclass
@@ -36,16 +45,25 @@ class Doc:
     text: str
     meta: dict
     body: str  # without front matter or HTML comments
+    error: str = ""  # why the file could not be read as a document
 
     @classmethod
     def read(cls, path: Path) -> Doc | None:
         if not path.is_file():
             return None
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return cls(path, "", {}, "", "not UTF-8 text")
         m = FRONT.match(text)
-        meta = (yaml.safe_load(m.group(1)) or {}) if m else {}
         body = COMMENT.sub("", text[m.end():] if m else text)
-        return cls(path, text, meta if isinstance(meta, dict) else {}, body)
+        try:
+            meta = (yaml.safe_load(m.group(1)) or {}) if m else {}
+        except yaml.YAMLError:
+            return cls(path, text, {}, body, "front matter is not valid YAML")
+        if not isinstance(meta, dict):
+            return cls(path, text, {}, body, "front matter is not a mapping")
+        return cls(path, text, meta, body)
 
     def status(self) -> str:
         return str(self.meta.get("status") or "")
@@ -74,7 +92,8 @@ class Doc:
             end = found[i + 1].start() if i + 1 < len(found) else len(text)
             chunk = text[m.end(): end]
             chunk = chunk[: s.start()] if (s := SECTION.search(chunk)) else chunk
-            out.append(Entry(m.group(1), m.group(2).strip(), {k.strip().lower(): v.strip() for k, v in FIELD.findall(chunk)}))
+            fields = {k.strip().lower(): v.strip() for k, v in FIELD.findall(chunk)}
+            out.append(Entry(m.group(1), m.group(2).strip(), fields, m.group(0) + chunk))
         return out
 
     def table(self, section: str) -> list[dict[str, str]]:
@@ -88,27 +107,19 @@ class Doc:
 
 
 def set_meta(text: str, key: str, value: object) -> str:
-    """The text with one front matter key set, adding the block or the key when absent."""
+    """The text with one front matter key set, adding the key when absent."""
     line = f"{key}: {value}"
     m = FRONT.match(text)
-    if not m:
-        return f"---\n{line}\n---\n{text}"
-    block = m.group(1)
+    block = m.group(1) if m else ""
     new, n = re.subn(rf"(?m)^{re.escape(key)}:.*$", line, block, count=1)
-    return f"---\n{new if n else block + chr(10) + line}\n---\n" + text[m.end():]
+    return f"---\n{new if n else (block + chr(10) + line).strip()}\n---\n" + (text[m.end():] if m else text)
 
 
-def insert_after_table(text: str, section: str, row: str) -> str:
-    """The text with a row appended to the first table under `## <section>`, or a table started there."""
-    m = next((h for h in SECTION.finditer(text) if h.group(1).lower().startswith(section.lower())), None)
-    if m is None:
-        return text.rstrip("\n") + f"\n\n## {section}\n\n| Rev | Date | Approver | Kind | Words | Hash |\n|---|---|---|---|---|---|\n{row}\n"
+def add_signoff(text: str, row: str) -> str:
+    """The text with a row appended to its `## Sign-off` table, which lint has already required."""
+    m = next(h for h in SECTION.finditer(text) if h.group(1).lower().startswith("sign-off"))
     nxt = SECTION.search(text, m.end())
     end = nxt.start() if nxt else len(text)
-    lines = text[m.end(): end].split("\n")
-    last = max((i for i, ln in enumerate(lines) if ln.strip().startswith("|")), default=None)
-    if last is None:
-        lines.insert(1, f"\n| Rev | Date | Approver | Kind | Words | Hash |\n|---|---|---|---|---|---|\n{row}")
-    else:
-        lines.insert(last + 1, row)
-    return text[: m.end()] + "\n".join(lines) + text[end:]
+    part = text[m.end(): end].rstrip("\n")
+    part += "\n" + row if "|" in part else "\n\n" + SIGNOFF_HEAD + "\n" + row
+    return text[: m.end()] + part + "\n" + ("\n" if nxt else "") + text[end:]
